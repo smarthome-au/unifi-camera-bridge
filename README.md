@@ -1,4 +1,4 @@
-# Unifi Camera Bridge 1.6.1
+# Unifi Camera Bridge 1.6.2
 
 One Docker container, a local web interface, and a persistent settings volume.
 Add, edit, disable, test, restart and remove cameras without editing per-camera

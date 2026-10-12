@@ -68,12 +68,17 @@ jobs:
           python3 - <<'PY'
           import json
           manifest=json.load(open('manifest.json'))
-          architectures={m['platform']['architecture'] for m in manifest['manifests'] if m['platform']['os']=='linux'}
-          assert {'amd64','arm64'} <= architectures, architectures
+          images={m['platform']['architecture']:m['digest'] for m in manifest['manifests'] if m['platform']['os']=='linux'}
+          assert {'amd64','arm64'} <= images.keys(), images
+          with open('platform-images.tsv','w') as f:
+              for arch in ('amd64','arm64'):
+                  f.write(arch+'\t'+images[arch]+'\n')
           PY
-          for arch in amd64 arm64; do
-            python3 scripts/check-image.py "$IMAGE@$DIGEST" --platform "linux/$arch" --version "${{ steps.release.outputs.version }}"
-          done
+          # The classic Docker image store cannot hold both platforms under one
+          # index digest. Check each exact child manifest from the built index.
+          while IFS=$'\t' read -r arch platform_digest; do
+            python3 scripts/check-image.py "$IMAGE@$platform_digest" --platform "linux/$arch" --version "${{ steps.release.outputs.version }}"
+          done < platform-images.tsv
       - name: Promote verified image to stable
         env:
           IMAGE: ${{ steps.release.outputs.image }}
