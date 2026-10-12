@@ -1,0 +1,36 @@
+# Prebuilt release. Load image.tar.gz before starting.
+services:
+  manager:
+    image: local/sonoff-protect-bridge:VERSION-ARCH
+    platform: linux/ARCH
+    pull_policy: never
+    container_name: sonoff-protect-bridge
+    restart: unless-stopped
+    init: true
+    read_only: true
+    user: '65532:65532'
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 60s
+    pids_limit: 512
+    volumes:
+      - camera-settings:/data
+    tmpfs:
+      - /run/bridge:rw,noexec,nosuid,size=16m,uid=65532,gid=65532,mode=0700
+      - /tmp:rw,noexec,nosuid,size=32m,uid=65532,gid=65532,mode=0700
+    ports:
+      - '${ADMIN_BIND_IP:-127.0.0.1}:${ADMIN_PORT:-18080}:8080'
+      - '8100-8115:8100-8115/tcp'
+      - '8600-8615:8600-8615/tcp'
+    environment:
+      ENDPOINT_CAPACITY: '16'
+      ONVIF_PORT_BASE: '8100'
+      RTSP_PORT_BASE: '8600'
+    logging:
+      driver: json-file
+      options:
+        max-size: '5m'
+        max-file: '3'
+volumes:
+  camera-settings:
+    name: sonoff-protect-bridge-data

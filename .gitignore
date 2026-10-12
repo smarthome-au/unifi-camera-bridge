@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!*.example
+/data/
+/work/
+/dist/
+/releases/
+*.tar
+*.tar.gz
+*.zip
+VALIDATION.txt
