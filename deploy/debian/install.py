@@ -17,7 +17,8 @@ import time
 import urllib.request
 
 BUNDLE = Path(__file__).resolve().parent
-INSTALL_DIR = Path('/opt/sonoff-protect-bridge')
+INSTALL_DIR = Path('/opt/unifi-protect-bridge')
+LEGACY_INSTALL_DIR = Path('/opt/sonoff-protect-bridge')
 OS_RELEASE = Path('/etc/os-release')
 SYSTEMD_DIR = Path('/run/systemd/system')
 LOCK_PATH = Path('/run/lock/sonoff-protect-bridge-install.lock')
@@ -31,6 +32,25 @@ PRIVATE = tuple(ipaddress.ip_network(x) for x in ('10.0.0.0/8','172.16.0.0/12','
 
 class InstallError(Exception):
     pass
+
+
+def installation_source():
+    """Find an existing managed installation without changing either directory."""
+    for directory in (INSTALL_DIR, LEGACY_INSTALL_DIR):
+        if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
+            raise InstallError(f'Installation path is not a regular directory: {directory}. No changes made.')
+    if LEGACY_INSTALL_DIR.exists():
+        if INSTALL_DIR.exists():
+            raise InstallError('Both old and new installation directories exist. Review them before retrying; no changes made.')
+        state_path = LEGACY_INSTALL_DIR/'installer-state.json'
+        compose_path = LEGACY_INSTALL_DIR/'compose.yaml'
+        if not state_path.is_file() or not compose_path.is_file():
+            raise InstallError('Old installation directory is unmanaged; no changes made.')
+        state = json.loads(state_path.read_text())
+        if not isinstance(state, dict) or not state or f'{LABEL}: {MARKER}' not in compose_path.read_text():
+            raise InstallError('Old installation directory is unmanaged; no changes made.')
+        return LEGACY_INSTALL_DIR
+    return INSTALL_DIR
 
 
 def run(args, *, capture=False, check=True):
@@ -294,7 +314,8 @@ def main(argv=None):
     if arch not in ('amd64','arm64'):
         raise InstallError('This release supports amd64 and arm64 only.')
     release=verify_payload(BUNDLE)
-    old_path=INSTALL_DIR/'installer-state.json'
+    source=installation_source()
+    old_path=source/'installer-state.json'
     old=json.loads(old_path.read_text()) if old_path.exists() else {}
     interfaces=json.loads(run(['ip','-j','-4','address','show','scope','global'],capture=True).stdout)
     routes=json.loads(run(['ip','-j','-4','route','show','default'],capture=True).stdout)
@@ -311,12 +332,14 @@ def main(argv=None):
     existing=inspect_container() if ready else None
     if ready:
         check_volume(existing,bool(old))
-    if (INSTALL_DIR/'compose.yaml').exists() and not old:
+    if (source/'compose.yaml').exists() and not old:
         raise InstallError('Installation directory contains an unmanaged Compose file; no changes made.')
     check_ports(bind,admin_port,existing,foreign_published_ports(bind) if ready else ())
     if shutil.disk_usage('/var').free < 2*1024**3:
         raise InstallError('At least 2 GiB free under /var is required for Docker and the image.')
     print(f'Debian {codename}, {arch}. Bridge address: {bind}. Admin page: http://{bind}:{admin_port}',flush=True)
+    if source == LEGACY_INSTALL_DIR:
+        print(f'Existing installation will move to {INSTALL_DIR}. Camera settings and Docker identities are retained.',flush=True)
     if args.check:
         print('Preflight passed. No changes made. Docker will be installed if needed.');return
     if os.geteuid()!=0:
@@ -325,6 +348,8 @@ def main(argv=None):
     with LOCK_PATH.open('w') as lock:
         try:fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         except BlockingIOError:raise InstallError('Another bridge installer is running.')
+        if installation_source() != source:
+            raise InstallError('Installation directory changed during preflight. Rerun the installer.')
         ensure_docker(codename,arch)
         engine_arch=run(DOCKER+['info','--format','{{.Architecture}}'],capture=True).stdout.strip()
         if engine_arch not in {'amd64':('amd64','x86_64'),'arm64':('arm64','aarch64')}[arch]:
@@ -347,6 +372,12 @@ def main(argv=None):
             print('Loading the bundled bridge image.',flush=True)
             run(DOCKER+['load','-i',str(BUNDLE/f'image-{arch}.tar.gz')])
         run(['systemctl','enable','--now','docker'])
+        if source == LEGACY_INSTALL_DIR:
+            # Move only after a successful image pull/load. The named Docker
+            # volume and project are unchanged, so camera identities survive.
+            if INSTALL_DIR.exists():
+                raise InstallError('New installation directory appeared during installation; no files moved.')
+            source.rename(INSTALL_DIR)
         deploy(compose,{'version':installed_version,'image':image,'architecture':arch,'bind_address':bind,'admin_port':admin_port},rollback_image)
 
     print(f'\nUnifi Camera Bridge is ready: http://{bind}:{admin_port}\nOpen this address in your browser. Sign in, or choose an admin password for a new installation.\nSettings are retained across restarts and installer reruns.')

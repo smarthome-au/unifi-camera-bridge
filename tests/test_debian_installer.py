@@ -86,7 +86,7 @@ class InstallerFlowTests(unittest.TestCase):
   checks={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in self.bundle.iterdir()}
   (self.bundle/'release.json').write_text(json.dumps({'version':'1.4.0','sha256':checks}))
   self.calls=[];self.docker_ready=False;self.container=None
-  self.patches=[patch.object(m,'BUNDLE',self.bundle),patch.object(m,'INSTALL_DIR',self.target),patch.object(m,'SYSTEMD_DIR',self.systemd),patch.object(m,'OS_RELEASE',self.osfile),patch.object(m,'LOCK_PATH',self.root/'lock'),patch.object(m.os,'geteuid',return_value=0),patch.object(m.shutil,'disk_usage',return_value=type('Disk',(),{'free':4*1024**3})()),patch.object(m.shutil,'which',return_value='/usr/bin/docker'),patch.object(m,'run',side_effect=self.command),patch.object(m,'check_ports'),patch.object(m,'ensure_docker',side_effect=self.install_docker)]
+  self.patches=[patch.object(m,'BUNDLE',self.bundle),patch.object(m,'INSTALL_DIR',self.target),patch.object(m,'LEGACY_INSTALL_DIR',self.root/'legacy'),patch.object(m,'SYSTEMD_DIR',self.systemd),patch.object(m,'OS_RELEASE',self.osfile),patch.object(m,'LOCK_PATH',self.root/'lock'),patch.object(m.os,'geteuid',return_value=0),patch.object(m.shutil,'disk_usage',return_value=type('Disk',(),{'free':4*1024**3})()),patch.object(m.shutil,'which',return_value='/usr/bin/docker'),patch.object(m,'run',side_effect=self.command),patch.object(m,'check_ports'),patch.object(m,'ensure_docker',side_effect=self.install_docker)]
   for p in self.patches:p.start()
  def tearDown(self):
   for p in reversed(self.patches):p.stop()
@@ -123,6 +123,59 @@ class InstallerFlowTests(unittest.TestCase):
   self.target.mkdir();(self.target/'compose.yaml').write_text('existing')
   with self.assertRaisesRegex(m.InstallError,'unmanaged'):m.main([])
   self.assertNotIn(['install-docker'],self.calls)
+
+ def seed_legacy(self):
+  legacy=self.root/'legacy';legacy.mkdir()
+  state={'version':'1.6.2','bind_address':'192.168.50.4','admin_port':18081}
+  (legacy/'installer-state.json').write_text(json.dumps(state))
+  compose=m.compose_text((ROOT/'deploy/compose.yaml').read_text(),'1.6.2','amd64',state['bind_address'],state['admin_port'],'ghcr.io/example/unifi-camera-bridge:stable')
+  (legacy/'compose.yaml').write_text(compose)
+  (legacy/'operator-note').write_text('keep this')
+  return legacy
+ def test_legacy_directory_migration_preserves_address_ports_volume_and_other_files(self):
+  self.registry_bundle();legacy=self.seed_legacy()
+  m.main([])
+  self.assertFalse(legacy.exists())
+  state=json.loads((self.target/'installer-state.json').read_text())
+  self.assertEqual(state['bind_address'],'192.168.50.4');self.assertEqual(state['admin_port'],18081)
+  self.assertEqual((self.target/'operator-note').read_text(),'keep this')
+  compose=(self.target/'compose.yaml').read_text()
+  self.assertIn('192.168.50.4:18081:8080',compose)
+  self.assertIn('name: sonoff-protect-bridge-data',compose)
+  up=next(c for c in self.calls if 'up' in c)
+  self.assertIn(str(self.target/'compose.yaml'),up);self.assertIn(m.PROJECT,up)
+  m.main([])  # Subsequent updates continue from the new path.
+ def test_legacy_preflight_does_not_move_files(self):
+  self.registry_bundle();legacy=self.seed_legacy();m.main(['--check'])
+  self.assertTrue(legacy.exists());self.assertFalse(self.target.exists())
+  self.assertFalse(any('pull' in c or 'up' in c for c in self.calls))
+ def test_legacy_failed_pull_leaves_old_directory_untouched(self):
+  self.registry_bundle();legacy=self.seed_legacy();before=(legacy/'compose.yaml').read_bytes()
+  command=self.command
+  def fail(args,**kw):
+   if 'pull' in args:raise m.InstallError('pull failed')
+   return command(args,**kw)
+  with patch.object(m,'run',side_effect=fail):
+   with self.assertRaisesRegex(m.InstallError,'pull failed'):m.main([])
+  self.assertEqual((legacy/'compose.yaml').read_bytes(),before);self.assertFalse(self.target.exists())
+ def test_legacy_conflicting_destination_is_not_overwritten(self):
+  self.registry_bundle();legacy=self.seed_legacy();self.target.mkdir()
+  (self.target/'sentinel').write_text('keep')
+  with self.assertRaisesRegex(m.InstallError,'Both old and new'):m.main([])
+  self.assertEqual((self.target/'sentinel').read_text(),'keep');self.assertTrue(legacy.exists())
+  self.assertEqual(self.calls,[['dpkg','--print-architecture']])
+ def test_unmanaged_legacy_directory_is_not_moved(self):
+  legacy=self.root/'legacy';legacy.mkdir();(legacy/'compose.yaml').write_text('unrelated')
+  with self.assertRaisesRegex(m.InstallError,'unmanaged'):m.main([])
+  self.assertTrue(legacy.exists());self.assertFalse(self.target.exists())
+ def test_legacy_health_failure_restores_compose_at_new_location(self):
+  self.registry_bundle();legacy=self.seed_legacy();before=(legacy/'compose.yaml').read_bytes()
+  with patch.object(m,'wait_healthy',side_effect=m.InstallError('health failed')):
+   with self.assertRaisesRegex(m.InstallError,'health failed'):m.main([])
+  self.assertFalse(legacy.exists());self.assertEqual((self.target/'compose.yaml').read_bytes(),before)
+  self.assertEqual(json.loads((self.target/'installer-state.json').read_text())['version'],'1.6.2')
+  self.assertEqual(sum('up' in c for c in self.calls),2)
+  self.assertFalse(any('down' in c or '--volumes' in c for c in self.calls))
 
  def registry_bundle(self):
   p=self.bundle/'release.json';metadata=json.loads(p.read_text())

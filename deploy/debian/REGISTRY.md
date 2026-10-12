@@ -21,8 +21,12 @@ remain available. An update retains the existing bind address, ports, camera
 identities, admin login and persistent settings volume.
 
 Existing deployments created by the older offline Debian installer can run this
-installer directly. Existing internal container/volume names intentionally stay
-the same, even though the application has been renamed. Unmanaged Mac/QNAP or
+installer directly. The installation directory is `/opt/unifi-protect-bridge`. Rerunning this installer
+moves an older `/opt/sonoff-protect-bridge` installation there after the image
+download succeeds. Camera settings, bind address and ports are retained. If both
+directories exist, the installer stops for review without overwriting either.
+Existing Docker container, project and volume names stay the same to preserve
+camera identities. Unmanaged Mac/QNAP or
 other manual deployments need a planned migration and are not taken over.
 
 ## Update
@@ -30,7 +34,7 @@ other manual deployments need a planned migration and are not taken over.
 The default `stable` image tag follows published releases. In a host terminal:
 
 ```sh
-cd /opt/sonoff-protect-bridge
+cd /opt/unifi-protect-bridge
 sudo docker compose -p sonoff-protect-bridge pull manager
 sudo docker compose -p sonoff-protect-bridge up -d --no-build manager
 ```
@@ -44,8 +48,8 @@ The camera application has no access to the Docker socket.
 
 ## Pin a release or roll back
 
-Change the image tag in `/opt/sonoff-protect-bridge/compose.yaml` from `stable` to a
-numbered release (for example `1.6.2`), then run the same pull/up commands. Older
+Change the image tag in `/opt/unifi-protect-bridge/compose.yaml` from `stable` to a
+numbered release (for example `1.6.3`), then run the same pull/up commands. Older
 versions may require a matching settings backup if a release changes its format.
 Do not change the project name or named data volume.
 

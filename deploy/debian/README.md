@@ -4,15 +4,15 @@ For Debian 12 or 13 on an Intel/AMD x64 or ARM64 machine/VM with systemd.
 Both bridge images are included. The installer selects the right one, installs
 Docker Engine and Compose if needed, imports the image and starts the bridge.
 No registry account, manual image import or configuration-file editing is needed.
-This installs bridge version 1.6.2. It does not install Debian itself.
+This installs bridge version 1.6.3. It does not install Debian itself.
 
 ## Install
 
 Copy the installer archive to the Debian machine. In that directory:
 
 ```sh
-tar -xzf sonoff-protect-bridge-1.6.2-debian-installer.tar.gz
-cd sonoff-protect-bridge-1.6.2-debian
+tar -xzf sonoff-protect-bridge-1.6.3-debian-installer.tar.gz
+cd sonoff-protect-bridge-1.6.3-debian
 sudo ./install.sh
 ```
 
@@ -31,7 +31,7 @@ No one-time token is required. Use a stable/DHCP-reserved host address.
 - Docker Engine and the Compose plugin, using Docker's signed Debian repository
   when installation is necessary. Debian prerequisites are Python 3, iproute2 and
   CA certificates. No unrelated container packages are automatically removed.
-- An installation directory at `/opt/sonoff-protect-bridge` containing generated
+- An installation directory at `/opt/unifi-protect-bridge` containing generated
   Compose configuration and installation metadata. These files have no camera
   credentials.
 - A container named `sonoff-protect-bridge`, with a read-only filesystem and a
@@ -102,7 +102,7 @@ sudo ./install.sh --check
 View status:
 
 ```sh
-sudo docker compose -p sonoff-protect-bridge -f /opt/sonoff-protect-bridge/compose.yaml ps
+sudo docker compose -p sonoff-protect-bridge -f /opt/unifi-protect-bridge/compose.yaml ps
 ```
 
 Use **Logs** in the bridge web interface for camera issues. For startup errors:
@@ -114,8 +114,8 @@ sudo docker logs --tail 100 sonoff-protect-bridge
 Stop/start without removing settings:
 
 ```sh
-sudo docker compose -p sonoff-protect-bridge -f /opt/sonoff-protect-bridge/compose.yaml stop
-sudo docker compose -p sonoff-protect-bridge -f /opt/sonoff-protect-bridge/compose.yaml up -d --no-build --pull never
+sudo docker compose -p sonoff-protect-bridge -f /opt/unifi-protect-bridge/compose.yaml stop
+sudo docker compose -p sonoff-protect-bridge -f /opt/unifi-protect-bridge/compose.yaml up -d --no-build --pull never
 ```
 
 Retain the settings volume when updating/removing containers. Do not run

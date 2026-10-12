@@ -1,6 +1,6 @@
 # Unifi Camera Bridge — Docker installation
 
-Release 1.6.2, packaging revision 2 (classic Docker archive). Packages contain the application only: no saved cameras, admin
+Release 1.6.3, packaging revision 2 (classic Docker archive). Packages contain the application only: no saved cameras, admin
 password or recordings. This is a Linux container.
 
 ## Choose a package
@@ -19,7 +19,7 @@ emulation on the development Mac, not on a physical x64 NAS.
 
 1. Unzip the **amd64** package on your computer. In Container Station, open
    **Images → Import** and select `image.tar.gz`. Use image import, not container
-   import. The imported tag is `local/sonoff-protect-bridge:1.6.2-amd64`.
+   import. The imported tag is `local/sonoff-protect-bridge:1.6.3-amd64`.
 2. Open `compose.qnap.yaml` and copy its contents. No IP address edits are needed.
 3. In **Applications → Create**, name the application `sonoff-protect-bridge`,
    paste the YAML, validate and create. Use the imported local image;
