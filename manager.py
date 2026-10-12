@@ -29,7 +29,7 @@ import rtsp_camera
 import presets
 import diagnostics
 
-VERSION = '1.6.0'
+VERSION = '1.6.1'
 APP = Path(__file__).resolve().parent
 PRIVATE = [ipaddress.ip_network(x) for x in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')]
 

@@ -1,7 +1,7 @@
 name: sonoff-camera-manager
 services:
   manager:
-    image: local/sonoff-protect-bridge:1.6.0
+    image: local/sonoff-protect-bridge:1.6.1
     build: .
     restart: unless-stopped
     init: true

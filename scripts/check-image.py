@@ -10,8 +10,15 @@ p=argparse.ArgumentParser(description=__doc__)
 p.add_argument('image');p.add_argument('--platform',required=True,choices=['linux/amd64','linux/arm64'])
 p.add_argument('--version',required=True);a=p.parse_args()
 name='unifi-bridge-check-'+secrets.token_hex(5)
-def docker(*args):return subprocess.check_output(['docker',*args],stderr=subprocess.PIPE,text=True).strip()
+def docker(*args):
+    result=subprocess.run(['docker',*args],capture_output=True,text=True)
+    if result.returncode:
+        raise RuntimeError('Docker '+args[0]+' failed: '+result.stderr.strip())
+    return result.stdout.strip()
 try:
+    # Classic Docker stores can cache only one platform for a manifest digest.
+    # Explicitly pull each platform before run, even if that digest is cached.
+    docker('pull','--platform',a.platform,a.image)
     docker('run','-d','--name',name,'--platform',a.platform,'--network','none','--read-only','--cap-drop','ALL',
            '--security-opt','no-new-privileges:true','--health-interval','2s','--health-start-period','2s',
            '--tmpfs','/data:rw,size=16m,uid=65532,gid=65532,mode=0700',

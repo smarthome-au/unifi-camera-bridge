@@ -96,7 +96,7 @@ class InstallerFlowTests(unittest.TestCase):
   self.calls.append(args)
   if args[0]=='dpkg':return result('amd64')
   if args[0]=='ip':return result(json.dumps([interface('ens18','192.168.50.4')] if 'address' in args else [{'dev':'ens18'}]))
-  if 'image' in args and 'inspect' in args:return result(json.dumps({'Architecture':'amd64','Os':'linux','Config':{'Labels':{'org.opencontainers.image.version':'1.6.0'}}}))
+  if 'image' in args and 'inspect' in args:return result(json.dumps({'Architecture':'amd64','Os':'linux','Config':{'Labels':{'org.opencontainers.image.version':'1.6.1'}}}))
   if 'container' in args and 'inspect' in args:return result(json.dumps([self.container])) if self.container else result(code=1)
   if 'volume' in args:return result(code=1)
   if 'info' in args:return result('x86_64') if self.docker_ready else result(code=1)
@@ -137,7 +137,7 @@ class InstallerFlowTests(unittest.TestCase):
   self.assertIn('ghcr.io/example/unifi-camera-bridge:stable',compose)
   self.assertNotIn('pull_policy:',compose)
   self.assertIn('platform: linux/amd64',compose)
-  self.assertEqual(json.loads((self.target/'installer-state.json').read_text())['version'],'1.6.0')
+  self.assertEqual(json.loads((self.target/'installer-state.json').read_text())['version'],'1.6.1')
  def test_registry_preflight_never_pulls(self):
   self.registry_bundle();m.main(['--check'])
   self.assertFalse(any('pull' in c or 'up' in c for c in self.calls))
@@ -164,7 +164,7 @@ class InstallerFlowTests(unittest.TestCase):
 
 class RegistryValidationTests(unittest.TestCase):
  def test_registry_references_and_injection_rejected(self):
-  for value in ('ghcr.io/example/bridge:stable','ghcr.io/example/bridge:1.6.0','ghcr.io/example/bridge@sha256:'+'a'*64):
+  for value in ('ghcr.io/example/bridge:stable','ghcr.io/example/bridge:1.6.1','ghcr.io/example/bridge@sha256:'+'a'*64):
    self.assertEqual(m.registry_image(value),value)
   for value in ('ghcr.io/example/bridge','docker.io/example/bridge:latest','ghcr.io/example/bridge:stable\n    privileged: true','ghcr.io/user:password@example/bridge:stable',None):
    with self.assertRaises(m.InstallError):m.registry_image(value)
