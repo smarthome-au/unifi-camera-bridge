@@ -15,12 +15,12 @@ automatic ONVIF setup and an option for standard RTSP cameras.
 For **Debian 12 or 13**, on **x64 or ARM64**. Run the installer on your Debian
 machine; it automatically installs Docker and runs the bridge in a container.
 
-1. Download the [Debian installer](https://github.com/smarthome-au/unifi-camera-bridge/releases/download/v1.6.7/unifi-camera-bridge-1.6.7-debian-installer.tar.gz).
+1. Download the [Debian installer](https://github.com/smarthome-au/unifi-camera-bridge/releases/download/v1.6.8/unifi-camera-bridge-1.6.8-debian-installer.tar.gz).
 2. In the download folder, run:
 
    ```sh
-   tar -xzf unifi-camera-bridge-1.6.7-debian-installer.tar.gz
-   cd unifi-camera-bridge-1.6.7-debian
+   tar -xzf unifi-camera-bridge-1.6.8-debian-installer.tar.gz
+   cd unifi-camera-bridge-1.6.8-debian
    sudo ./install.sh
    ```
 
@@ -76,6 +76,11 @@ Keep its settings volume when updating or recreating the container.
 3. Enable **Improved Stream Compatibility** and **Audio** where available.
 4. For a supported pan/tilt camera, enable **PTZ Control**, leave **Auto Return
    Home** off, and use the arrow keys in the expanded live view.
+
+New adoptions use the bridge camera name followed by its model, such as
+**Lounge RTSP** or **Fish Tank CAM-S3W**. Each lens has a distinct name. Protect
+keeps its own saved name after adoption; rename existing cameras in Protect
+without removing them.
 
 Add each lens separately for a multi-lens camera. HQ/LQ choices depend on the
 camera's available streams. If a connection fails, use **Test connection** or

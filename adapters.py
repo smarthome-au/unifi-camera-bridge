@@ -4,6 +4,7 @@ CAM-S3W values are measured on firmware 1.2.1. Passthrough applies only the
 shared HTTP/service-address/identity handling and does not repair video data.
 """
 import re
+import html
 import ipaddress
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -50,10 +51,14 @@ def cam_s3w_response(data, operation, config):
         text = text.replace('UsernameToken="false"', 'UsernameToken="true"')
         text = text.replace('SnapshotUri="true"', 'SnapshotUri="false"')
     if operation == 'GetDeviceInformation':
+        # Protect builds the adoption name from Manufacturer + Model.
+        value('Manufacturer', html.escape(config.name))
+        fill_empty('Manufacturer', html.escape(config.name))
+        if config.adapter == 'cam-s3w':
+            value('Model', 'CAM-S3W')
         # Distinct software identity avoids merging with native discovery.
         for e in root.iter():
             if localname(e.tag) == 'SerialNumber':
-                import html
                 value('SerialNumber', html.escape((e.text or 'CAM-S3W') + '-bridge'))
     if operation == 'GetNetworkInterfaces':
         value('HwAddress', config.mac)

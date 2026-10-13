@@ -81,6 +81,11 @@ def media_caps(parent, tag, view):
     node(e, M2, 'StreamingCapabilities', RTSPStreaming='true', RTPMulticast='false', RTP_RTSP_TCP='true')
 
 
+def advertised_name(camera, index):
+    views = camera['discovery']['views']
+    return camera['name'] + (' · ' + views[index]['label'] if len(views) > 1 else '')
+
+
 def response(request, camera, index, public, rtsp_port, mac, controller=None, event_service=None):
     body = request.find(f'{{{S}}}Body')
     if body is None or len(body) != 1: return error('InvalidArgVal', 'Invalid request')
@@ -150,7 +155,7 @@ def response(request, camera, index, public, rtsp_port, mac, controller=None, ev
     elif ns == D:
         if name == 'GetDeviceInformation':
             info = camera['discovery']['device']
-            for key, val in [('Manufacturer', info['Manufacturer']), ('Model', info['Model']+' Bridge'), ('FirmwareVersion', '1.4.0'), ('SerialNumber', mac.replace(':', '')), ('HardwareId', 'Unifi-Camera-Bridge')]: node(r, D, key, val)
+            for key, val in [('Manufacturer', advertised_name(camera, index)), ('Model', 'RTSP' if camera.get('model') == 'rtsp' else info['Model']), ('FirmwareVersion', '1.4.0'), ('SerialNumber', mac.replace(':', '')), ('HardwareId', 'Unifi-Camera-Bridge')]: node(r, D, key, val)
         elif name == 'GetServices':
             for service, path in [(D, '/onvif/device_service'), (M2, '/onvif/media2_service')] + ([(P,'/onvif/ptz_service')] if view.get('ptz') else []):
                 s = node(r, D, 'Service'); node(s, D, 'Namespace', service); node(s, D, 'XAddr', public+path)
@@ -174,7 +179,7 @@ def response(request, camera, index, public, rtsp_port, mac, controller=None, ev
             for key, val in [('Hour', now.hour), ('Minute', now.minute), ('Second', now.second)]: node(t, TT, key, val)
             for key, val in [('Year', now.year), ('Month', now.month), ('Day', now.day)]: node(d, TT, key, val)
         elif name == 'GetScopes':
-            for scope in (['type/ptz'] if view.get('ptz') else []) + ['type/video_encoder', 'name/'+urllib.parse.quote(camera['name'], safe=''), 'hardware/Automatic-Bridge']:
+            for scope in (['type/ptz'] if view.get('ptz') else []) + ['type/video_encoder', 'name/'+urllib.parse.quote(advertised_name(camera, index), safe=''), 'hardware/Automatic-Bridge']:
                 s = node(r, D, 'Scopes'); node(s, TT, 'ScopeDef', 'Fixed'); node(s, TT, 'ScopeItem', 'onvif://www.onvif.org/'+scope)
         elif name == 'GetHostname':
             h = node(r, D, 'HostnameInformation'); node(h, TT, 'FromDHCP', 'false'); node(h, TT, 'Name', 'unifi-camera-bridge')

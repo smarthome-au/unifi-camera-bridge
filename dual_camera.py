@@ -8,6 +8,7 @@ Optional directional PTZ control is exposed only on the PTZ lens; lens-specific 
 import copy
 import html
 import re
+import urllib.parse
 import xml.etree.ElementTree as ET
 import ptz_control
 
@@ -300,11 +301,11 @@ def device_response(data, operation, config):
         response = root.find('.//{' + D + '}GetScopesResponse')
         response.clear()
         for scope in (['onvif://www.onvif.org/type/ptz'] if ptz_control.enabled(config) else []) + ['onvif://www.onvif.org/type/video_encoder',
-                      'onvif://www.onvif.org/name/CAM-C44HE-' + config.lens,
+                      'onvif://www.onvif.org/name/' + urllib.parse.quote(config.name, safe=''),
                       'onvif://www.onvif.org/hardware/CAM-C44HE-Bridge']:
             e = node(response, D, 'Scopes'); node(e, TT, 'ScopeDef', 'Fixed'); node(e, TT, 'ScopeItem', scope)
     elif operation == 'GetDeviceInformation':
         for e in root.iter():
             if local(e.tag) == 'SerialNumber': e.text = (e.text or '') + '-' + config.lens
-            elif local(e.tag) == 'Model': e.text = 'CAM-C44HE ' + config.lens.title() + ' Bridge'
+            elif local(e.tag) == 'Model': e.text = 'CAM-C44HE'
     return ET.tostring(root, encoding='utf-8', xml_declaration=True)
