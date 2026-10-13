@@ -150,7 +150,7 @@ def response(request, camera, index, public, rtsp_port, mac, controller=None, ev
     elif ns == D:
         if name == 'GetDeviceInformation':
             info = camera['discovery']['device']
-            for key, val in [('Manufacturer', info['Manufacturer']), ('Model', info['Model']+' Bridge'), ('FirmwareVersion', '1.4.0'), ('SerialNumber', mac.replace(':', '')), ('HardwareId', 'Sonoff-Protect-Bridge')]: node(r, D, key, val)
+            for key, val in [('Manufacturer', info['Manufacturer']), ('Model', info['Model']+' Bridge'), ('FirmwareVersion', '1.4.0'), ('SerialNumber', mac.replace(':', '')), ('HardwareId', 'Unifi-Camera-Bridge')]: node(r, D, key, val)
         elif name == 'GetServices':
             for service, path in [(D, '/onvif/device_service'), (M2, '/onvif/media2_service')] + ([(P,'/onvif/ptz_service')] if view.get('ptz') else []):
                 s = node(r, D, 'Service'); node(s, D, 'Namespace', service); node(s, D, 'XAddr', public+path)
@@ -177,7 +177,7 @@ def response(request, camera, index, public, rtsp_port, mac, controller=None, ev
             for scope in (['type/ptz'] if view.get('ptz') else []) + ['type/video_encoder', 'name/'+urllib.parse.quote(camera['name'], safe=''), 'hardware/Automatic-Bridge']:
                 s = node(r, D, 'Scopes'); node(s, TT, 'ScopeDef', 'Fixed'); node(s, TT, 'ScopeItem', 'onvif://www.onvif.org/'+scope)
         elif name == 'GetHostname':
-            h = node(r, D, 'HostnameInformation'); node(h, TT, 'FromDHCP', 'false'); node(h, TT, 'Name', 'sonoff-protect-bridge')
+            h = node(r, D, 'HostnameInformation'); node(h, TT, 'FromDHCP', 'false'); node(h, TT, 'Name', 'unifi-camera-bridge')
         elif name == 'GetNetworkInterfaces':
             e = node(r, D, 'NetworkInterfaces', token='eth0'); node(e, TT, 'Enabled', 'true')
             info = node(e, TT, 'Info'); node(info, TT, 'Name', 'eth0'); node(info, TT, 'HwAddress', mac); node(info, TT, 'MTU', 1500)

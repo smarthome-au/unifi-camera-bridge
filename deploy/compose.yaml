@@ -1,10 +1,11 @@
 # Prebuilt release. Load image.tar.gz before starting.
+name: unifi-camera-bridge
 services:
   manager:
-    image: local/sonoff-protect-bridge:VERSION-ARCH
+    image: local/unifi-camera-bridge:VERSION-ARCH
     platform: linux/ARCH
     pull_policy: never
-    container_name: sonoff-protect-bridge
+    container_name: unifi-camera-bridge
     restart: unless-stopped
     init: true
     read_only: true
@@ -33,4 +34,4 @@ services:
         max-file: '3'
 volumes:
   camera-settings:
-    name: sonoff-protect-bridge-data
+    name: unifi-camera-bridge-data

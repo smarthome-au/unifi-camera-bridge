@@ -16,7 +16,7 @@ from dual_camera import M1, M2, TT, node, envelope, error
 from discovery import media_config, value
 
 PATH = '/snapshot.jpg'
-REALM = 'Sonoff Protect Bridge'
+REALM = 'Unifi Camera Bridge'
 
 
 def uri_response(op, public, tokens):

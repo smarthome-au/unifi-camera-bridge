@@ -20,23 +20,28 @@ first-time setup there. `--check`, `--bind-address LAN_IP` and `--admin-port POR
 remain available. An update retains the existing bind address, ports, camera
 identities, admin login and persistent settings volume.
 
-Existing deployments created by the older offline Debian installer can run this
-installer directly. The installation directory is `/opt/unifi-protect-bridge`. Rerunning this installer
-moves an older `/opt/sonoff-protect-bridge` installation there after the image
-download succeeds. Camera settings, bind address and ports are retained. If both
-directories exist, the installer stops for review without overwriting either.
-Existing Docker container, project and volume names stay the same to preserve
-camera identities. Unmanaged Mac/QNAP or
-other manual deployments need a planned migration and are not taken over.
+Existing installer-managed deployments can run this installer directly. It moves
+`/opt/sonoff-protect-bridge` or `/opt/unifi-protect-bridge` to
+`/opt/unifi-camera-bridge` and switches the Docker project/container to
+`unifi-camera-bridge`. Settings are copied to `unifi-camera-bridge-data` while the
+old container is stopped. Login details, camera identities, address and ports
+are preserved. The original volume remains as a recovery backup; protect it as
+it contains camera credentials. A failed migration attempts to restart the
+original deployment and retains both settings copies for review.
+
+If multiple installation directories or a destination container/volume already
+exist, the installer stops without overwriting them. Unmanaged Docker/QNAP
+installations are not taken over automatically. When updating these, retain the
+existing settings volume and project until you have arranged a settings migration.
 
 ## Update
 
 The default `stable` image tag follows published releases. In a host terminal:
 
 ```sh
-cd /opt/unifi-protect-bridge
-sudo docker compose -p sonoff-protect-bridge pull manager
-sudo docker compose -p sonoff-protect-bridge up -d --no-build manager
+cd /opt/unifi-camera-bridge
+sudo docker compose -p unifi-camera-bridge pull manager
+sudo docker compose -p unifi-camera-bridge up -d --no-build manager
 ```
 
 The pull happens while the current bridge runs. Recreating the container briefly
@@ -48,8 +53,8 @@ The camera application has no access to the Docker socket.
 
 ## Pin a release or roll back
 
-Change the image tag in `/opt/unifi-protect-bridge/compose.yaml` from `stable` to a
-numbered release (for example `1.6.3`), then run the same pull/up commands. Older
+Change the image tag in `/opt/unifi-camera-bridge/compose.yaml` from `stable` to a
+numbered release (for example `1.6.4`), then run the same pull/up commands. Older
 versions may require a matching settings backup if a release changes its format.
 Do not change the project name or named data volume.
 
@@ -65,9 +70,9 @@ Admin defaults to port 18080; ONVIF uses 8100–8115 and RTSP uses 8600–8615. 
 binds these to the selected private LAN IPv4. Keep the address stable. Complete
 first-admin setup promptly on a trusted network. The installer does not alter
 router or firewall policy. Credentials stay in the protected settings volume
-`sonoff-protect-bridge-data`; release images contain no camera settings.
+`unifi-camera-bridge-data`; release images contain no camera settings.
 
 Use the application's Logs screen for camera issues, or `sudo docker logs --tail
-100 sonoff-protect-bridge` for startup troubleshooting. The installer is for
+100 unifi-camera-bridge` for startup troubleshooting. The installer is for
 Debian, not native QNAP QTS. Container Station can use the same GHCR image with
 the documented ports and persistent volume.

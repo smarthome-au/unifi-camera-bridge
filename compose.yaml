@@ -1,8 +1,9 @@
-name: sonoff-camera-manager
+name: unifi-camera-bridge
 services:
   manager:
-    image: local/sonoff-protect-bridge:1.6.3
+    image: local/unifi-camera-bridge:1.6.4
     build: .
+    container_name: unifi-camera-bridge
     restart: unless-stopped
     init: true
     read_only: true
@@ -33,3 +34,4 @@ services:
         max-file: '3'
 volumes:
   camera-settings:
+    name: unifi-camera-bridge-data

@@ -32,7 +32,7 @@ class PreflightTests(unittest.TestCase):
   with self.assertRaises(m.InstallError):m.choose_address([interface('ens18','8.8.8.8')],[])
  def test_compose_fixed_port_mapping_and_persistent_volume(self):
   value=m.compose_text((ROOT/'deploy/compose.yaml').read_text(),'1.4.0','amd64','192.168.50.4',18080)
-  for text in ['192.168.50.4:18080:8080','192.168.50.4:8100-8115:8100-8115/tcp','192.168.50.4:8600-8615:8600-8615/tcp','local/sonoff-protect-bridge:1.4.0-amd64','name: sonoff-protect-bridge-data']:
+  for text in ['192.168.50.4:18080:8080','192.168.50.4:8100-8115:8100-8115/tcp','192.168.50.4:8600-8615:8600-8615/tcp','local/unifi-camera-bridge:1.4.0-amd64','name: unifi-camera-bridge-data']:
    self.assertIn(text,value)
   self.assertEqual(value.count(m.LABEL),2)
   for port in [80,8105,8609,65536]:
@@ -48,6 +48,28 @@ class PreflightTests(unittest.TestCase):
   with patch.object(m,'run',return_value=result('{}')):
    with self.assertRaises(m.InstallError):m.check_volume(None,False)
   with patch.object(m,'run',return_value=result(json.dumps({m.LABEL:m.MARKER}))):m.check_volume(None,False)
+ def test_repository_names_migrate_with_valid_signing_key_reference(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp);(root/'keyrings').mkdir();(root/'sources.list.d').mkdir()
+   key=root/f'keyrings/{m.LEGACY_NAME}-docker.asc';key.write_text('public-key')
+   source=root/f'sources.list.d/{m.LEGACY_NAME}-docker.sources'
+   source.write_text(f'URIs: https://download.docker.com/linux/debian\nSigned-By: {key}\n')
+   with patch.object(m,'APT_DIR',root):m.migrate_repository_names()
+   new_key=root/'keyrings/unifi-camera-bridge-docker.asc'
+   new_source=root/'sources.list.d/unifi-camera-bridge-docker.sources'
+   self.assertEqual(new_key.read_text(),'public-key')
+   self.assertIn('Signed-By: '+str(new_key),new_source.read_text())
+   self.assertFalse(key.exists());self.assertFalse(source.exists())
+ def test_repository_destination_collision_keeps_original_files(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp);(root/'keyrings').mkdir();(root/'sources.list.d').mkdir()
+   key=root/f'keyrings/{m.LEGACY_NAME}-docker.asc';key.write_text('public-key')
+   source=root/f'sources.list.d/{m.LEGACY_NAME}-docker.sources'
+   source.write_text(f'URIs: https://download.docker.com/linux/debian\nSigned-By: {key}\n')
+   (root/'keyrings/unifi-camera-bridge-docker.asc').write_text('existing')
+   with patch.object(m,'APT_DIR',root):
+    with self.assertRaisesRegex(m.InstallError,'Both old and new'):m.migrate_repository_names()
+   self.assertTrue(source.exists());self.assertEqual(key.read_text(),'public-key')
  def test_working_docker_reused_without_package_changes(self):
   calls=[]
   with patch.object(m.shutil,'which',return_value='/usr/bin/docker'),patch.object(m,'installed',return_value=False),patch.object(m,'run',side_effect=lambda args,**kw:(calls.append(args) or result())):
@@ -85,8 +107,8 @@ class InstallerFlowTests(unittest.TestCase):
   (self.bundle/'compose.template.yaml').write_text((ROOT/'deploy/compose.yaml').read_text())
   checks={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in self.bundle.iterdir()}
   (self.bundle/'release.json').write_text(json.dumps({'version':'1.4.0','sha256':checks}))
-  self.calls=[];self.docker_ready=False;self.container=None
-  self.patches=[patch.object(m,'BUNDLE',self.bundle),patch.object(m,'INSTALL_DIR',self.target),patch.object(m,'LEGACY_INSTALL_DIR',self.root/'legacy'),patch.object(m,'SYSTEMD_DIR',self.systemd),patch.object(m,'OS_RELEASE',self.osfile),patch.object(m,'LOCK_PATH',self.root/'lock'),patch.object(m.os,'geteuid',return_value=0),patch.object(m.shutil,'disk_usage',return_value=type('Disk',(),{'free':4*1024**3})()),patch.object(m.shutil,'which',return_value='/usr/bin/docker'),patch.object(m,'run',side_effect=self.command),patch.object(m,'check_ports'),patch.object(m,'ensure_docker',side_effect=self.install_docker)]
+  self.calls=[];self.docker_ready=False;self.container=None;self.legacy_container=None
+  self.patches=[patch.object(m,'BUNDLE',self.bundle),patch.object(m,'INSTALL_DIR',self.target),patch.object(m,'LEGACY_INSTALL_DIRS',(self.root/'legacy',self.root/'intermediate')),patch.object(m,'SYSTEMD_DIR',self.systemd),patch.object(m,'OS_RELEASE',self.osfile),patch.object(m,'LOCK_PATH',self.root/'lock'),patch.object(m,'LEGACY_LOCK_PATH',self.root/'old-lock'),patch.object(m.os,'geteuid',return_value=0),patch.object(m.shutil,'disk_usage',return_value=type('Disk',(),{'free':4*1024**3})()),patch.object(m.shutil,'which',return_value='/usr/bin/docker'),patch.object(m,'run',side_effect=self.command),patch.object(m,'check_ports'),patch.object(m,'ensure_docker',side_effect=self.install_docker)]
   for p in self.patches:p.start()
  def tearDown(self):
   for p in reversed(self.patches):p.stop()
@@ -97,8 +119,13 @@ class InstallerFlowTests(unittest.TestCase):
   if args[0]=='dpkg':return result('amd64')
   if args[0]=='ip':return result(json.dumps([interface('ens18','192.168.50.4')] if 'address' in args else [{'dev':'ens18'}]))
   if 'image' in args and 'inspect' in args:return result(json.dumps({'Architecture':'amd64','Os':'linux','Config':{'Labels':{'org.opencontainers.image.version':'1.6.2'}}}))
-  if 'container' in args and 'inspect' in args:return result(json.dumps([self.container])) if self.container else result(code=1)
-  if 'volume' in args:return result(code=1)
+  if 'container' in args and 'inspect' in args:
+   c=self.legacy_container if args[-1]==m.LEGACY_NAME else self.container
+   return result(json.dumps([c])) if c else result(code=1)
+  if 'volume' in args:
+   if 'inspect' in args and args[-1]==m.LEGACY_VOLUME and self.legacy_container:
+    return result(json.dumps([{'Driver':'local','Options':{},'Labels':{m.LEGACY_LABEL:m.MARKER}}]))
+   return result(code=1) if 'inspect' in args else result()
   if 'info' in args:return result('x86_64') if self.docker_ready else result(code=1)
   if 'ps' in args:return result('')
   if 'inspect' in args:return result('{"Status":"running","Health":{"Status":"healthy"}}')
@@ -109,7 +136,7 @@ class InstallerFlowTests(unittest.TestCase):
   self.assertEqual(state['bind_address'],'192.168.50.4')
   self.assertTrue(any('load' in c for c in self.calls));self.assertTrue(any('up' in c for c in self.calls))
   m.main([])
-  self.assertIn('name: sonoff-protect-bridge-data',(self.target/'compose.yaml').read_text())
+  self.assertIn('name: unifi-camera-bridge-data',(self.target/'compose.yaml').read_text())
   self.assertEqual(json.loads((self.target/'installer-state.json').read_text()),state)
  def test_check_is_read_only(self):
   m.main(['--check'])
@@ -129,7 +156,9 @@ class InstallerFlowTests(unittest.TestCase):
   state={'version':'1.6.2','bind_address':'192.168.50.4','admin_port':18081}
   (legacy/'installer-state.json').write_text(json.dumps(state))
   compose=m.compose_text((ROOT/'deploy/compose.yaml').read_text(),'1.6.2','amd64',state['bind_address'],state['admin_port'],'ghcr.io/example/unifi-camera-bridge:stable')
+  compose=compose.replace('unifi-camera-bridge',m.LEGACY_NAME)
   (legacy/'compose.yaml').write_text(compose)
+  self.legacy_container={'Config':{'Labels':{m.LEGACY_LABEL:m.MARKER,'com.docker.compose.project':m.LEGACY_NAME}},'Mounts':[{'Type':'volume','Name':m.LEGACY_VOLUME,'Destination':'/data'}],'State':{'Running':True},'Image':'sha256:'+'a'*64}
   (legacy/'operator-note').write_text('keep this')
   return legacy
  def test_legacy_directory_migration_preserves_address_ports_volume_and_other_files(self):
@@ -141,7 +170,7 @@ class InstallerFlowTests(unittest.TestCase):
   self.assertEqual((self.target/'operator-note').read_text(),'keep this')
   compose=(self.target/'compose.yaml').read_text()
   self.assertIn('192.168.50.4:18081:8080',compose)
-  self.assertIn('name: sonoff-protect-bridge-data',compose)
+  self.assertIn('name: unifi-camera-bridge-data',compose)
   up=next(c for c in self.calls if 'up' in c)
   self.assertIn(str(self.target/'compose.yaml'),up);self.assertIn(m.PROJECT,up)
   m.main([])  # Subsequent updates continue from the new path.
@@ -172,10 +201,35 @@ class InstallerFlowTests(unittest.TestCase):
   self.registry_bundle();legacy=self.seed_legacy();before=(legacy/'compose.yaml').read_bytes()
   with patch.object(m,'wait_healthy',side_effect=m.InstallError('health failed')):
    with self.assertRaisesRegex(m.InstallError,'health failed'):m.main([])
-  self.assertFalse(legacy.exists());self.assertEqual((self.target/'compose.yaml').read_bytes(),before)
-  self.assertEqual(json.loads((self.target/'installer-state.json').read_text())['version'],'1.6.2')
-  self.assertEqual(sum('up' in c for c in self.calls),2)
-  self.assertFalse(any('down' in c or '--volumes' in c for c in self.calls))
+  self.assertTrue(legacy.exists());self.assertFalse(self.target.exists())
+  self.assertEqual((legacy/'compose.yaml').read_bytes(),before)
+  self.assertEqual(json.loads((legacy/'installer-state.json').read_text())['version'],'1.6.2')
+  self.assertTrue(any('start' in c and m.LEGACY_NAME in c for c in self.calls))
+  self.assertFalse(any('--volumes' in c or ('volume' in c and 'rm' in c) for c in self.calls))
+
+ def test_intermediate_directory_also_migrates(self):
+  self.registry_bundle();legacy=self.seed_legacy();legacy.rename(self.root/'intermediate')
+  m.main([])
+  self.assertTrue((self.target/'installer-state.json').exists())
+  self.assertFalse((self.root/'intermediate').exists())
+ def test_settings_copy_failure_restarts_original_without_moving_directory(self):
+  self.registry_bundle();legacy=self.seed_legacy();command=self.command
+  def fail(args,**kw):
+   if 'run' in args and '--entrypoint' in args:raise m.InstallError('copy failed')
+   return command(args,**kw)
+  with patch.object(m,'run',side_effect=fail):
+   with self.assertRaisesRegex(m.InstallError,'copy failed'):m.main([])
+  self.assertTrue(legacy.exists());self.assertFalse(self.target.exists())
+  self.assertTrue(any('start' in c and m.LEGACY_NAME in c for c in self.calls))
+  self.assertFalse(any('up' in c for c in self.calls))
+ def test_existing_new_volume_blocks_migration_before_stopping_old_container(self):
+  self.registry_bundle();self.seed_legacy();command=self.command
+  def conflict(args,**kw):
+   if 'volume' in args and 'inspect' in args and args[-1]==m.VOLUME:return result('[{}]')
+   return command(args,**kw)
+  with patch.object(m,'run',side_effect=conflict):
+   with self.assertRaisesRegex(m.InstallError,'already exists'):m.main([])
+  self.assertFalse(any('stop' in c or 'run' in c for c in self.calls))
 
  def registry_bundle(self):
   p=self.bundle/'release.json';metadata=json.loads(p.read_text())

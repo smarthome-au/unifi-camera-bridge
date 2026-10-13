@@ -26,7 +26,7 @@ readme=(root/'deploy/debian/REGISTRY.md').read_text().replace('IMAGE_REFERENCE',
 (folder/'README.md').write_text(readme)
 names=['install.sh','install.py','compose.template.yaml','README.md']
 checks={name:hashlib.sha256((folder/name).read_bytes()).hexdigest() for name in names}
-metadata=dict(version=version,installer_version=3,distribution='registry',image=a.image,sha256=checks)
+metadata=dict(version=version,installer_version=4,distribution='registry',image=a.image,sha256=checks)
 (folder/'release.json').write_text(json.dumps(metadata,indent=2)+'\n')
 checks['release.json']=hashlib.sha256((folder/'release.json').read_bytes()).hexdigest()
 (folder/'SHA256SUMS.txt').write_text(''.join(f'{digest}  {name}\n' for name,digest in checks.items()))

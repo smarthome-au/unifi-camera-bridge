@@ -20,13 +20,13 @@ output = args.output.resolve()
 output.mkdir(parents=True, exist_ok=True)
 artifacts = []
 for arch in ('amd64', 'arm64'):
-    image = f'local/sonoff-protect-bridge:{version}-{arch}'
+    image = f'local/unifi-camera-bridge:{version}-{arch}'
     if not args.skip_build:
         subprocess.run(['docker','buildx','build','--platform',f'linux/{arch}','--load','-t',image,str(root)], check=True)
     actual = subprocess.check_output(['docker','image','inspect',image,'--format','{{.Architecture}}'], text=True).strip()
     if actual != arch:
         raise SystemExit(f'{image}: expected {arch}, got {actual}')
-    folder = output/f'sonoff-protect-bridge-{version}-{arch}'
+    folder = output/f'unifi-camera-bridge-{version}-{arch}'
     folder.mkdir(exist_ok=True)
     compose = (root/'deploy/compose.yaml').read_text().replace('VERSION',version).replace('ARCH',arch)
     (folder/'compose.yaml').write_text(compose)
@@ -55,7 +55,7 @@ for arch in ('amd64', 'arm64'):
     artifacts.append(bundle)
     print(f'Packaged {arch}: {bundle.name}',flush=True)
 # Explicit source allowlist: no data volumes, credentials, build caches or local env files.
-source=output/f'sonoff-protect-bridge-{version}-source.zip'
+source=output/f'unifi-camera-bridge-{version}-source.zip'
 with zipfile.ZipFile(source,'w',zipfile.ZIP_DEFLATED) as z:
     for p in sorted(root.rglob('*')):
         relative=p.relative_to(root)

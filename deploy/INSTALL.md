@@ -1,6 +1,6 @@
 # Unifi Camera Bridge — Docker installation
 
-Release 1.6.3, packaging revision 2 (classic Docker archive). Packages contain the application only: no saved cameras, admin
+Release 1.6.4, packaging revision 2 (classic Docker archive). Packages contain the application only: no saved cameras, admin
 password or recordings. This is a Linux container.
 
 ## Choose a package
@@ -19,9 +19,9 @@ emulation on the development Mac, not on a physical x64 NAS.
 
 1. Unzip the **amd64** package on your computer. In Container Station, open
    **Images → Import** and select `image.tar.gz`. Use image import, not container
-   import. The imported tag is `local/sonoff-protect-bridge:1.6.3-amd64`.
+   import. The imported tag is `local/unifi-camera-bridge:1.6.4-amd64`.
 2. Open `compose.qnap.yaml` and copy its contents. No IP address edits are needed.
-3. In **Applications → Create**, name the application `sonoff-protect-bridge`,
+3. In **Applications → Create**, name the application `unifi-camera-bridge`,
    paste the YAML, validate and create. Use the imported local image;
    disable any option to pull an image first. No registry account is needed.
 4. Open `http://YOUR_NAS_IP:18080`. Port 18080 avoids the usual QNAP admin port.
@@ -37,7 +37,7 @@ The QNAP template makes port 18080 available on all NAS IPv4 interfaces.
 Complete initial setup promptly: the first visitor who can reach the page can
 create the admin account. After setup, the admin password is required.
 
-The named volume `sonoff-protect-bridge-data` holds settings. It is created with
+The named volume `unifi-camera-bridge-data` holds settings. It is created with
 permissions for the non-root application user. Avoid substituting an ordinary
 NAS shared-folder mount without first granting UID/GID 65532 write access.
 There is no need for privileged mode, host networking, USB or GPU passthrough.
@@ -87,8 +87,14 @@ Maximum default capacity is 16 views, not necessarily 16 physical cameras.
 
 ## Updating and keeping settings
 
+If your existing installation uses an older name, keep its project and settings
+volume when updating the image. Replacing its Compose file with the newly named
+template can create an empty settings volume. Debian installer-managed deployments
+can use the new installer to migrate names and settings automatically. Other
+Docker/QNAP installations need a planned settings transfer before changing names.
+
 Import/load the new image, update the image tag in the same application's YAML
-and recreate that application while retaining `sonoff-protect-bridge-data`.
+and recreate that application while retaining `unifi-camera-bridge-data`.
 In CLI installations run `docker compose up -d --no-build` after updating the tag.
 Keep the same volume and endpoint ports. Restarting briefly interrupts streams
 and clears browser sign-in sessions. Do not delete the volume or use `down -v`.

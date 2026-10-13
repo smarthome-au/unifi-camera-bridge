@@ -4,15 +4,15 @@ For Debian 12 or 13 on an Intel/AMD x64 or ARM64 machine/VM with systemd.
 Both bridge images are included. The installer selects the right one, installs
 Docker Engine and Compose if needed, imports the image and starts the bridge.
 No registry account, manual image import or configuration-file editing is needed.
-This installs bridge version 1.6.3. It does not install Debian itself.
+This installs bridge version 1.6.4. It does not install Debian itself.
 
 ## Install
 
 Copy the installer archive to the Debian machine. In that directory:
 
 ```sh
-tar -xzf sonoff-protect-bridge-1.6.3-debian-installer.tar.gz
-cd sonoff-protect-bridge-1.6.3-debian
+tar -xzf unifi-camera-bridge-1.6.4-debian-installer.tar.gz
+cd unifi-camera-bridge-1.6.4-debian
 sudo ./install.sh
 ```
 
@@ -31,12 +31,12 @@ No one-time token is required. Use a stable/DHCP-reserved host address.
 - Docker Engine and the Compose plugin, using Docker's signed Debian repository
   when installation is necessary. Debian prerequisites are Python 3, iproute2 and
   CA certificates. No unrelated container packages are automatically removed.
-- An installation directory at `/opt/unifi-protect-bridge` containing generated
+- An installation directory at `/opt/unifi-camera-bridge` containing generated
   Compose configuration and installation metadata. These files have no camera
   credentials.
-- A container named `sonoff-protect-bridge`, with a read-only filesystem and a
+- A container named `unifi-camera-bridge`, with a read-only filesystem and a
   non-root application user. It starts automatically when Docker starts.
-- Persistent settings in the named Docker volume `sonoff-protect-bridge-data`.
+- Persistent settings in the named Docker volume `unifi-camera-bridge-data`.
   That volume contains camera credentials and should be backed up securely.
 - TCP port 18080 for administration, 8100–8115 for ONVIF/events/snapshots, and
   8600–8615 for RTSP, bound to the detected private LAN IPv4 address. Port numbers
@@ -54,10 +54,16 @@ and never places camera passwords in command arguments.
 ## Updates and reruns
 
 Extract a newer installer bundle and run its `install.sh`. The installer keeps
-its existing LAN binding, admin port and settings volume, then replaces the
+its existing LAN binding, admin port and settings, then replaces the
 application image. Upgrades briefly interrupt video and clear browser sessions.
 If startup fails, it attempts to restore the previous deployment configuration.
 A failed first installation retains its volume so settings are not discarded.
+
+Older installer-managed deployments are migrated from either previous directory
+name to `/opt/unifi-camera-bridge`. Docker resources use `unifi-camera-bridge`,
+with settings copied to `unifi-camera-bridge-data`. The original settings volume
+is kept as a recovery backup. Run the installer for this migration; pulling an
+image alone does not rename host files or Docker resources.
 
 A manually installed bridge, pre-existing unmanaged settings volume or unrelated
 container with the same name is not taken over automatically. Arrange a migration
@@ -102,20 +108,20 @@ sudo ./install.sh --check
 View status:
 
 ```sh
-sudo docker compose -p sonoff-protect-bridge -f /opt/unifi-protect-bridge/compose.yaml ps
+sudo docker compose -p unifi-camera-bridge -f /opt/unifi-camera-bridge/compose.yaml ps
 ```
 
 Use **Logs** in the bridge web interface for camera issues. For startup errors:
 
 ```sh
-sudo docker logs --tail 100 sonoff-protect-bridge
+sudo docker logs --tail 100 unifi-camera-bridge
 ```
 
 Stop/start without removing settings:
 
 ```sh
-sudo docker compose -p sonoff-protect-bridge -f /opt/unifi-protect-bridge/compose.yaml stop
-sudo docker compose -p sonoff-protect-bridge -f /opt/unifi-protect-bridge/compose.yaml up -d --no-build --pull never
+sudo docker compose -p unifi-camera-bridge -f /opt/unifi-camera-bridge/compose.yaml stop
+sudo docker compose -p unifi-camera-bridge -f /opt/unifi-camera-bridge/compose.yaml up -d --no-build --pull never
 ```
 
 Retain the settings volume when updating/removing containers. Do not run

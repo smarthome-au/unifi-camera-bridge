@@ -22,8 +22,8 @@ OCI version/source/revision labels, provenance and SBOM accompany the release.
 Create the first release after the main-branch tests pass:
 
 ```sh
-git tag v1.6.3
-git push origin v1.6.3
+git tag v1.6.4
+git push origin v1.6.4
 ```
 
 The workflow publishes the numbered image and `stable`, creates a GitHub Release,
@@ -62,8 +62,9 @@ image. For a fixed-version installer, replace `stable` with a published version
 or use its `@sha256:...` digest. An explicit fixed reference does not track later
 releases when `docker compose pull` runs.
 
-Existing offline packaging scripts remain usable. Debian registry upgrades reuse
-the old installer-managed container and settings volume. A failed pull leaves
+Existing offline packaging scripts remain usable. Debian registry upgrades migrate
+legacy installation names and settings to unifi-camera-bridge; subsequent upgrades
+reuse the canonical container and settings volume. A failed pull leaves
 the old application running; a failed installer deployment attempts to restart
 the previous image ID, even if `stable` now points at the failed new image.
 Direct `docker compose pull/up` does not include this installer rollback behavior.

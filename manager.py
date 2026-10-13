@@ -29,7 +29,7 @@ import rtsp_camera
 import presets
 import diagnostics
 
-VERSION = '1.6.3'
+VERSION = '1.6.4'
 APP = Path(__file__).resolve().parent
 PRIVATE = [ipaddress.ip_network(x) for x in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')]
 
@@ -408,7 +408,7 @@ class Server(http.server.ThreadingHTTPServer):
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
-    server_version = 'SONOFF-Bridge-Manager'
+    server_version = 'Unifi-Camera-Bridge'
     sys_version = ''
     def log_message(self, *_): pass
     def setup(self):
