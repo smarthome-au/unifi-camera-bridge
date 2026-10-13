@@ -22,8 +22,8 @@ OCI version/source/revision labels, provenance and SBOM accompany the release.
 Create the first release after the main-branch tests pass:
 
 ```sh
-git tag v1.6.4
-git push origin v1.6.4
+git tag v1.6.5
+git push origin v1.6.5
 ```
 
 The workflow publishes the numbered image and `stable`, creates a GitHub Release,

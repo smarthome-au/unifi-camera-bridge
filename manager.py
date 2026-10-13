@@ -29,7 +29,7 @@ import rtsp_camera
 import presets
 import diagnostics
 
-VERSION = '1.6.4'
+VERSION = '1.6.5'
 APP = Path(__file__).resolve().parent
 PRIVATE = [ipaddress.ip_network(x) for x in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')]
 
@@ -464,7 +464,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if not self.session(): return self.send(401, {'error':'Please sign in.'})
             data=self.server.store.public(); data['runtime']=self.server.supervisor.status(); data['events']=getattr(self.server.supervisor,'event_status',lambda:{})()
             return self.send(200,data)
-        files={'/':('index.html','text/html; charset=utf-8'), '/app.js':('app.js','text/javascript; charset=utf-8'), '/style.css':('style.css','text/css; charset=utf-8')}
+        files={'/':('index.html','text/html; charset=utf-8'), '/app.js':('app.js','text/javascript; charset=utf-8'), '/style.css':('style.css','text/css; charset=utf-8'), '/product-logo.svg':('product-logo.svg','image/svg+xml'), '/smarthome-logo.png':('smarthome-logo.png','image/png')}
         if self.path in files:
             name,mime=files[self.path]; return self.send(200,(APP/'static'/name).read_bytes(),mime)
         self.send(404,{'error':'Not found.'})

@@ -54,7 +54,7 @@ The camera application has no access to the Docker socket.
 ## Pin a release or roll back
 
 Change the image tag in `/opt/unifi-camera-bridge/compose.yaml` from `stable` to a
-numbered release (for example `1.6.4`), then run the same pull/up commands. Older
+numbered release (for example `1.6.5`), then run the same pull/up commands. Older
 versions may require a matching settings backup if a release changes its format.
 Do not change the project name or named data volume.
 
