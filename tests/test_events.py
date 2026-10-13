@@ -155,6 +155,63 @@ class RenewalTests(unittest.TestCase):
             with self.assertRaises(urllib.error.HTTPError):s.renew_native('http://192.168.1.10/sub','')
         self.assertTrue(s.renew_supported)
 
+class NativePollingTests(unittest.TestCase):
+    def test_slow_empty_poll_gets_extra_time_without_extending_other_calls(self):
+        import http.server
+        from unittest.mock import patch
+        from discovery import Client as NativeClient
+        class Camera(http.server.BaseHTTPRequestHandler):
+            def log_message(self,*args):pass
+            def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']))
+                time.sleep(.08)
+                raw=f'<s:Envelope xmlns:s="{S}" xmlns:t="{e.E}"><s:Body><t:PullMessagesResponse/></s:Body></s:Envelope>'.encode()
+                self.send_response(200);self.send_header('Content-Length',str(len(raw)));self.end_headers()
+                try:self.wfile.write(raw)
+                except OSError:pass
+        server=http.server.ThreadingHTTPServer(('127.0.0.1',0),Camera)
+        thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
+        s=service();s.client=NativeClient(dict(ip='127.0.0.1',address='127.0.0.1',onvif_port=server.server_port,username='test',password='test'))
+        s.client.timeout=.03;uri=f'http://127.0.0.1:{server.server_port}/events'
+        try:
+            with self.assertRaises(TimeoutError):s.client.call(uri,e.E,'PullMessages')
+            with patch.object(e,'PULL_HTTP_TIMEOUT',.5):
+                self.assertEqual(s.call(uri,e.E,'PullMessages').tag,'{'+e.E+'}PullMessagesResponse')
+            self.assertEqual(s.client.timeout,.03)
+            # Other calls retain the short timeout, even when they fail.
+            with self.assertRaises(TimeoutError):s.call(uri,e.W,'Renew')
+            self.assertEqual(s.client.timeout,.03)
+        finally:server.shutdown();server.server_close();thread.join()
+
+    def test_failed_first_poll_is_not_reported_as_connected(self):
+        from unittest.mock import patch
+        s=service();states=[]
+        def call(uri,ns,name,inner='',header=''):
+            if name=='PullMessages':s.done.set();raise TimeoutError()
+            return ET.Element('r')
+        with patch.object(s,'subscribe_native',return_value=('http://192.168.1.10/sub','')),patch.object(s,'call',side_effect=call),patch.object(s,'write_status',side_effect=lambda:states.append(s.link)):
+            s.run()
+        self.assertNotIn('connected',states);self.assertIn('reconnecting',states)
+        self.assertEqual(s.reconnects,1)
+
+    def test_successful_empty_poll_establishes_connection_without_motion(self):
+        from unittest.mock import patch
+        s=service();states=[]
+        def call(uri,ns,name,inner='',header=''):
+            if name=='PullMessages':s.done.set()
+            return ET.Element('r')
+        with patch.object(s,'subscribe_native',return_value=('http://192.168.1.10/sub','')),patch.object(s,'call',side_effect=call),patch.object(s,'write_status',side_effect=lambda:states.append(s.link)):
+            s.run()
+        self.assertIn('connected',states);self.assertIsNone(s.active);self.assertEqual(s.transitions,0)
+
+    def test_poll_timeout_is_restored_after_transport_failure(self):
+        from unittest.mock import patch
+        s=service();seen=[]
+        def fail(*args,**kwargs):seen.append(s.client.timeout);raise TimeoutError()
+        with patch.object(s.client,'call',side_effect=fail):
+            with self.assertRaises(TimeoutError):s.call('http://192.168.1.10/sub',e.E,'PullMessages')
+        self.assertEqual(seen,[15]);self.assertEqual(s.client.timeout,9)
+
 class FilterTests(unittest.TestCase):
     def test_state_filter_is_applied_without_evaluating_supplied_xpath(self):
         s=service()

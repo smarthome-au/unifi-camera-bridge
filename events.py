@@ -29,6 +29,9 @@ DIALECT = 'http://www.onvif.org/ver10/tev/topicExpression/ConcreteSet'
 ITEM_FILTER = 'http://www.onvif.org/ver10/tev/messageContentFilter/ItemFilter'
 PATH = '/onvif/events_service'
 PREFIX = '/onvif/events/sub/'
+# CAM-S3W returns empty PT5S polls after ~10 seconds. Leave headroom for
+# that firmware behaviour without slowing down other event operations.
+PULL_HTTP_TIMEOUT = 15
 OPS = {'GetServiceCapabilities', 'GetEventProperties', 'CreatePullPointSubscription',
        'PullMessages', 'Renew', 'Unsubscribe', 'SetSynchronizationPoint'}
 for prefix, uri in [('tev', E), ('wsnt', W), ('wstop', T), ('wsa', A)]:
@@ -115,7 +118,7 @@ class Service:
         self.client.timeout=9
         self.condition=threading.Condition();self.done=threading.Event();self.subs={};self.states={};self.active=None
         self.plan=None;self.available=False;self.renewals=0;self.replacements=0;self.renew_supported=True;self.reconnects=0;self.received=0;self.transitions=0;self.last_event=None;self.last_motion=None
-        self.status_file=status_file;self.link='checking';self.thread=None
+        self.status_file=status_file;self.link='checking';self.thread=None;self.operation=None
         model=camera.get('discovery',{}).get('device',{}).get('Model',camera.get('model','')).lower()
         self.camera_wide=model in ('cam-c44he','camc44he')
         self.multi=multi and not self.camera_wide
@@ -131,8 +134,12 @@ class Service:
             self.thread=threading.Thread(target=self.run,daemon=True);self.thread.start()
 
     def call(self,uri,ns,name,inner='',header=''):
+        self.operation=name
         self.client.deadline=time.monotonic()+20
-        return self.client.call(uri,ns,name,inner,header_xml=header)
+        previous_timeout=self.client.timeout
+        if name=='PullMessages':self.client.timeout=PULL_HTTP_TIMEOUT
+        try:return self.client.call(uri,ns,name,inner,header_xml=header)
+        finally:self.client.timeout=previous_timeout
 
     def write_status(self):
         if not self.status_file:return
@@ -227,17 +234,20 @@ class Service:
                         self.link='unsupported';self.write_status();self.done.wait(30);continue
                 uri,header=self.subscribe_native()
                 with self.condition:self.states.clear()
-                self.link='connected';self.write_status();renew=time.monotonic()+25
+                self.link='connecting';self.write_status();renew=time.monotonic()+25
                 while not self.done.is_set():
                     if time.monotonic()>=renew:
                         uri,header=self.renew_native(uri,header);self.write_status();renew=time.monotonic()+25
                     started=time.monotonic()
                     r=self.call(uri,E,'PullMessages','<t:Timeout>PT5S</t:Timeout><t:MessageLimit>64</t:MessageLimit>',header)
                     self.consume(r)
+                    if self.link!='connected':self.link='connected';self.write_status()
                     self.done.wait(max(0,.2-(time.monotonic()-started)))
             except Exception as exc:
                 self.reconnects+=1
-                print(json.dumps({'event_connection':'retry','error':type(exc).__name__}),flush=True)
+                record={'event_connection':'retry','error':type(exc).__name__,'operation':self.operation}
+                if isinstance(exc,urllib.error.HTTPError):record['status']=exc.code
+                print(json.dumps(record),flush=True)
                 self.link='reconnecting';self.write_status()
             finally:
                 if uri:

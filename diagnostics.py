@@ -68,7 +68,22 @@ class Journal:
         event=d.get('worker_event')
         if isinstance(event,str) and event in WORKER_MESSAGES:
             level,msg=WORKER_MESSAGES[event];self.add(level,msg,key);return
-        if d.get('event_connection')=='retry':self.add('warning','Motion event connection lost; retrying.',key);return
+        if d.get('event_connection')=='retry':
+            # Whitelisted descriptions only: exception messages and URLs may
+            # contain credentials or raw camera responses.
+            reasons={'TimeoutError':'Camera response timed out.', 'ConnectionResetError':'Camera reset the connection.',
+                     'RemoteDisconnected':'Camera closed the connection.', 'ConnectionRefusedError':'Camera refused the connection.',
+                     'URLError':'Could not reach the camera.', 'ParseError':'Camera returned invalid XML.',
+                     'ValueError':'Camera returned an unexpected ONVIF response.'}
+            err=d.get('error');detail=reasons.get(err,'') if isinstance(err,str) else ''
+            status=d.get('status')
+            if err=='HTTPError' and type(status) is int and 400<=status<=599:
+                detail=f'Camera returned HTTP {status}.'
+            op=d.get('operation')
+            if isinstance(op,str) and op in ('CreatePullPointSubscription','PullMessages','Renew','Unsubscribe') and detail:
+                detail=f'{op}: {detail}'
+            message='Motion event connection lost; retrying.'
+            self.add('warning',message+(' '+detail if detail else ''),key);return
         if d.get('rtsp')=='connection_error':self.add('warning','Video connection interrupted. The camera or viewer closed the connection unexpectedly.',key);return
         if 'snapshot_status' in d:
             status=d['snapshot_status']

@@ -29,6 +29,17 @@ class DiagnosticsTests(unittest.TestCase):
   j=Journal()
   for r in [dict(operation='PullMessages',status=200),dict(event='motion',active=True),dict(snapshot_status=200),dict(rtsp='open')]:j.ingest('a/fixed',json.dumps(r))
   self.assertEqual(len(j.rows),0)
+ def test_event_failure_details_are_whitelisted_and_repeat_failures_collapse(self):
+  j=Journal()
+  for _ in range(3):j.ingest('a/fixed',json.dumps(dict(event_connection='retry',error='TimeoutError',operation='PullMessages',message='SUPERSECRET')))
+  row=j.read()['entries'][0]
+  self.assertEqual(len(j.rows),1);self.assertEqual(row['count'],3)
+  self.assertIn('PullMessages: Camera response timed out.',row['message'])
+  j.ingest('a/fixed',json.dumps(dict(event_connection='retry',error='HTTPError',status=401,operation='Renew')))
+  self.assertIn('Renew: Camera returned HTTP 401.',j.read()['entries'][0]['message'])
+  for error in ['SUPERSECRET', ['SUPERSECRET']]:
+   j.ingest('a/fixed',json.dumps(dict(event_connection='retry',error=error,status='SUPERSECRET',operation='SUPERSECRET')))
+  self.assertNotIn('SUPERSECRET',json.dumps(j.read()))
  def test_worker_diagnostics_and_concurrent_writes(self):
   j=Journal();j.ingest('a/media','{"worker_event":"encoder_exit"}')
   self.assertEqual(j.rows[0]['level'],'warning')

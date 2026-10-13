@@ -29,7 +29,7 @@ import rtsp_camera
 import presets
 import diagnostics
 
-VERSION = '1.6.5'
+VERSION = '1.6.6'
 APP = Path(__file__).resolve().parent
 PRIVATE = [ipaddress.ip_network(x) for x in ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')]
 
@@ -383,7 +383,9 @@ class Supervisor:
                             key=f'{ident}/events{index+1}'; connection=state.get('connection')
                             if self.observed_events.get(key)!=connection:
                                 self.observed_events[key]=connection
-                                messages={'connected':('info','Motion event feed connected.'),'unavailable':('warning','Motion event feed unavailable; retrying.'),'reconnecting':('warning','Motion event feed reconnecting.'),'unsupported':('warning','Camera does not expose supported motion events.'),'disabled':('info','Motion event forwarding is off.'),'camera disabled':('info','Camera is disabled.')}
+                                # The worker logs reconnect failures with the
+                                # operation/reason; do not emit a duplicate here.
+                                messages={'connected':('info','Motion event feed connected.'),'unavailable':('warning','Motion event feed unavailable; retrying.'),'unsupported':('warning','Camera does not expose supported motion events.'),'disabled':('info','Motion event forwarding is off.'),'camera disabled':('info','Camera is disabled.')}
                                 if connection in messages:self.logs.add(*messages[connection],key)
             except Exception:
                 self.logs.add('error', 'Manager could not reconcile camera workers; retrying.')
