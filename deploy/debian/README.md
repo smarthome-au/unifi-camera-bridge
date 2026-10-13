@@ -4,15 +4,15 @@ For Debian 12 or 13 on an Intel/AMD x64 or ARM64 machine/VM with systemd.
 Both bridge images are included. The installer selects the right one, installs
 Docker Engine and Compose if needed, imports the image and starts the bridge.
 No registry account, manual image import or configuration-file editing is needed.
-This installs bridge version 1.6.8. It does not install Debian itself.
+This installs bridge version 1.6.9. It does not install Debian itself.
 
 ## Install
 
 Copy the installer archive to the Debian machine. In that directory:
 
 ```sh
-tar -xzf unifi-camera-bridge-1.6.8-debian-installer.tar.gz
-cd unifi-camera-bridge-1.6.8-debian
+tar -xzf unifi-camera-bridge-1.6.9-debian-installer.tar.gz
+cd unifi-camera-bridge-1.6.9-debian
 sudo ./install.sh
 ```
 

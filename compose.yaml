@@ -1,7 +1,7 @@
 name: unifi-camera-bridge
 services:
   manager:
-    image: local/unifi-camera-bridge:1.6.8
+    image: local/unifi-camera-bridge:1.6.9
     build: .
     container_name: unifi-camera-bridge
     restart: unless-stopped

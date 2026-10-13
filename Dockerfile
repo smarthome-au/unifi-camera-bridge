@@ -3,7 +3,7 @@ FROM python:3.13-slim@sha256:3dd7cc108ec1493442514f5c2a871af6af0ec31d768ff6e378a
 RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /data /run/bridge && chown 65532:65532 /data /run/bridge
 COPY --from=mediamtx /mediamtx /mediamtx
-ARG VERSION=1.6.8
+ARG VERSION=1.6.9
 ARG SOURCE_URL
 ARG REVISION
 LABEL org.opencontainers.image.title="Unifi Camera Bridge" \

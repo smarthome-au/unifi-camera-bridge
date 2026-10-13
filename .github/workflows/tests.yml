@@ -20,5 +20,5 @@ jobs:
         with:
           node-version: '24'
       - run: python -m unittest discover -s tests
-      - run: node tests/test_setup_ui.js && node tests/test_rtsp_ui.js
+      - run: node tests/test_setup_ui.js && node tests/test_rtsp_ui.js && node tests/test_copy_ui.js
       - run: bash -n deploy/debian/install.sh
