@@ -15,12 +15,12 @@ automatic ONVIF setup and an option for standard RTSP cameras.
 For **Debian 12 or 13**, on **x64 or ARM64**. Run the installer on your Debian
 machine; it automatically installs Docker and runs the bridge in a container.
 
-1. Download the [Debian installer](https://github.com/smarthome-au/unifi-camera-bridge/releases/download/v1.6.6/unifi-camera-bridge-1.6.6-debian-installer.tar.gz).
+1. Download the [Debian installer](https://github.com/smarthome-au/unifi-camera-bridge/releases/download/v1.6.7/unifi-camera-bridge-1.6.7-debian-installer.tar.gz).
 2. In the download folder, run:
 
    ```sh
-   tar -xzf unifi-camera-bridge-1.6.6-debian-installer.tar.gz
-   cd unifi-camera-bridge-1.6.6-debian
+   tar -xzf unifi-camera-bridge-1.6.7-debian-installer.tar.gz
+   cd unifi-camera-bridge-1.6.7-debian
    sudo ./install.sh
    ```
 
@@ -28,9 +28,9 @@ machine; it automatically installs Docker and runs the bridge in a container.
 
 The installer downloads the correct image for your machine. No image import or
 GitHub login is needed. Files are installed in `/opt/unifi-camera-bridge`.
-Rerun this installer to update an existing Debian installation; older installation
-directories and Docker names are migrated automatically, preserving camera
-settings and retaining the original settings volume as a recovery backup.
+Settings are stored in `/opt/unifi-camera-bridge/data/config.json` and survive
+container updates. Back up the `data` folder securely; it contains camera logins.
+This installer uses a fresh installation and does not migrate older Docker volumes.
 
 ## Install with Docker
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Debian host installer. No camera credentials are read or printed."""
+"""Debian host installer. Camera credentials are never printed."""
 import argparse
 import contextlib
 import fcntl
@@ -8,12 +8,12 @@ import ipaddress
 import json
 import os
 import re
+import stat
 from pathlib import Path
 import shutil
 import socket
 import subprocess
 import sys
-import tempfile
 import time
 import urllib.request
 
@@ -25,12 +25,10 @@ SYSTEMD_DIR = Path('/run/systemd/system')
 LOCK_PATH = Path('/run/lock/unifi-camera-bridge-install.lock')
 LEGACY_LOCK_PATH = Path('/run/lock/sonoff-protect-bridge-install.lock')
 CONTAINER = 'unifi-camera-bridge'
-VOLUME = 'unifi-camera-bridge-data'
+DATA_UID = DATA_GID = 65532
 PROJECT = 'unifi-camera-bridge'
 LABEL = 'io.unifi-camera-bridge.installer'
 LEGACY_NAME = 'sonoff-protect-bridge'
-LEGACY_VOLUME = 'sonoff-protect-bridge-data'
-LEGACY_LABEL = 'io.sonoff-protect-bridge.installer'
 APT_DIR = Path('/etc/apt')
 MARKER = 'debian-v1'
 DOCKER = ['docker', '--host', 'unix:///var/run/docker.sock']
@@ -45,19 +43,8 @@ def installation_source():
     for directory in (INSTALL_DIR, *LEGACY_INSTALL_DIRS):
         if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
             raise InstallError(f'Installation path is not a regular directory: {directory}. No changes made.')
-    old_dirs = [p for p in LEGACY_INSTALL_DIRS if p.exists()]
-    if old_dirs:
-        if INSTALL_DIR.exists() or len(old_dirs) > 1:
-            raise InstallError('Both old and new installation directories exist. Review them before retrying; no changes made.')
-        directory = old_dirs[0]
-        state_path = directory/'installer-state.json'
-        compose_path = directory/'compose.yaml'
-        if not state_path.is_file() or not compose_path.is_file():
-            raise InstallError('Old installation directory is unmanaged; no changes made.')
-        state = json.loads(state_path.read_text())
-        if not isinstance(state, dict) or not state or f'{LEGACY_LABEL}: {MARKER}' not in compose_path.read_text():
-            raise InstallError('Old installation directory is unmanaged; no changes made.')
-        return directory
+    if any(p.exists() for p in LEGACY_INSTALL_DIRS):
+        raise InstallError('An older installation directory exists. This installer requires a fresh installation; no files changed.')
     return INSTALL_DIR
 
 
@@ -153,15 +140,18 @@ def compose_text(template, version, arch, bind, admin_port, image=None):
             .replace('${ADMIN_BIND_IP:-127.0.0.1}:${ADMIN_PORT:-18080}',f'{bind}:{admin_port}')
             .replace("'8100-8115:8100-8115/tcp'",f"'{bind}:8100-8115:8100-8115/tcp'")
             .replace("'8600-8615:8600-8615/tcp'",f"'{bind}:8600-8615:8600-8615/tcp'")
-            .replace('    restart: unless-stopped',f'    labels:\n      {LABEL}: {MARKER}\n    restart: unless-stopped')
-            .replace('    name: unifi-camera-bridge-data',f'    name: unifi-camera-bridge-data\n    labels:\n      {LABEL}: {MARKER}'))
+            .replace('    restart: unless-stopped',f'    labels:\n      {LABEL}: {MARKER}\n    restart: unless-stopped'))
     if image is not None:
         rendered = rendered.replace(f'local/unifi-camera-bridge:{version}-{arch}', image).replace('    pull_policy: never\n', '')
+    rendered = rendered.replace('      - camera-settings:/data',
+        '      - type: bind\n        source: '+json.dumps(str(INSTALL_DIR/'data'))+
+        '\n        target: /data\n        bind:\n          create_host_path: false')
+    rendered = rendered.split('\nvolumes:\n', 1)[0]+'\n'
     return rendered
 
 
-def inspect_container(legacy=False):
-    name, volume, label = (LEGACY_NAME, LEGACY_VOLUME, LEGACY_LABEL) if legacy else (CONTAINER, VOLUME, LABEL)
+def inspect_container():
+    name, label = CONTAINER, LABEL
     result = run(DOCKER+['container','inspect',name],capture=True,check=False)
     if result.returncode:
         return None
@@ -170,123 +160,46 @@ def inspect_container(legacy=False):
     if labels.get(label) != MARKER or labels.get('com.docker.compose.project') != name:
         raise InstallError(f'A container named {name} already exists and was not created by this installer. It has been left untouched.')
     mounts = container.get('Mounts', [])
-    if not any(m.get('Type')=='volume' and m.get('Name')==volume and m.get('Destination')=='/data' for m in mounts):
-        raise InstallError('Existing bridge has an unexpected data mount; no changes made.')
+    data_mounts = [m for m in mounts if m.get('Destination')=='/data']
+    valid = (len(data_mounts)==1 and data_mounts[0].get('Type')=='bind'
+             and data_mounts[0].get('Source')==str(INSTALL_DIR/'data'))
+    if not valid or data_mounts[0].get('RW') is False:
+        raise InstallError('Existing bridge does not use the expected settings folder. Reinstall before using this installer; no changes made.')
     return container
 
 
 
-def check_volume(existing, has_state):
-    if existing or has_state:
+def check_storage(source, existing, state):
+    """Check the settings folder without modifying saved data."""
+    data = source/'data'
+    if state and state.get('storage') != 'directory':
+        raise InstallError('This older installation uses a Docker volume. Reinstall to use folder storage; no changes made.')
+    if data.is_symlink() or (data.exists() and not data.is_dir()):
+        raise InstallError('Settings path must be a real directory, not a symlink or file.')
+    if not data.exists():
+        if state or existing:
+            raise InstallError('Settings directory is missing; restore it before updating.')
         return
-    result=run(DOCKER+['volume','inspect','--format','{{json .Labels}}',VOLUME],capture=True,check=False)
-    if result.returncode==0 and (json.loads(result.stdout) or {}).get(LABEL)!=MARKER:
-        raise InstallError('A bridge settings volume exists outside this installer. Preserve it and review migration before a new install.')
+    if data.stat().st_uid!=DATA_UID or data.stat().st_gid!=DATA_GID or stat.S_IMODE(data.stat().st_mode)!=0o700:
+        raise InstallError('Settings directory must be owned by 65532:65532 with mode 0700.')
+    config=data/'config.json'
+    if config.is_symlink() or (config.exists() and not config.is_file()):
+        raise InstallError('Saved config.json must be a regular file.')
+    if (state or existing) and not config.is_file():
+        raise InstallError('Saved config.json is missing; restore it before updating.')
 
 
-def check_name_migration(existing):
-    """Refuse collisions or missing source data before stopping the old bridge."""
-    for kind, name in (('container', CONTAINER), ('volume', VOLUME)):
-        if run(DOCKER+[kind,'inspect',name],capture=True,check=False).returncode == 0:
-            raise InstallError(f'Migration destination {name} already exists. Review it before retrying; no data overwritten.')
-    result=run(DOCKER+['volume','inspect',LEGACY_VOLUME],capture=True,check=False)
-    if result.returncode:
-        raise InstallError('Original settings volume is missing. Migration stopped to avoid an empty installation.')
-    volume=json.loads(result.stdout)[0]
-    if volume.get('Driver') != 'local' or volume.get('Options'):
-        raise InstallError('Original settings volume uses custom storage; review migration before proceeding.')
-    if not existing and (volume.get('Labels') or {}).get(LEGACY_LABEL) != MARKER:
-        raise InstallError('Original settings volume is unmanaged; no changes made.')
+def create_data_directory(path):
+    path.mkdir(mode=0o700)
+    os.chown(path,DATA_UID,DATA_GID)
+    path.chmod(0o700)
 
 
-COPY_SETTINGS_CODE = '''
-import hashlib, shutil, stat
-from pathlib import Path
-source, target = Path('/source'), Path('/data')
-if not (source/'config.json').is_file() or any(target.iterdir()):
-    raise RuntimeError('Settings source is missing or destination is not empty.')
-def manifest(root):
-    result = {}
-    for path in root.rglob('*'):
-        mode = path.lstat().st_mode
-        if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)):
-            raise RuntimeError('Settings contain an unsupported file type.')
-        result[str(path.relative_to(root))] = (stat.S_IMODE(mode),
-            hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None)
-    return result
-before = manifest(source)
-shutil.copytree(source, target, dirs_exist_ok=True)
-if manifest(target) != before:
-    raise RuntimeError('Settings copy verification failed.')
-'''
-
-
-def migrate_names(source, compose, state, image, existing):
-    """Switch names transactionally; keep the original settings volume as backup."""
-    check_name_migration(existing)
-    candidate=source/'compose.name-migration.yaml'
-    candidate.write_text(compose);candidate.chmod(0o600)
-    old_compose=(source/'compose.yaml').read_bytes()
-    old_state=(source/'installer-state.json').read_bytes()
-    base=DOCKER+['compose','--project-name',PROJECT]
-    run(base+['-f',str(candidate),'config','--quiet'],capture=True)
-    was_running=bool(existing and existing.get('State',{}).get('Running'))
-    stopped=False; moved=False; starting=False
-    try:
-        # The source container stays available for rollback until health passes.
-        if existing:
-            run(DOCKER+['stop','--time','60',LEGACY_NAME]);stopped=True
-        run(DOCKER+['volume','create','--label',f'{LABEL}={MARKER}',
-                   '--label',f'com.docker.compose.project={PROJECT}',
-                   '--label','com.docker.compose.volume=camera-settings',VOLUME],capture=True)
-        run(DOCKER+['run','--rm','--network','none','--read-only','--user','65532:65532',
-                   '--cap-drop','ALL','--security-opt','no-new-privileges:true',
-                   '--mount',f'type=volume,src={LEGACY_VOLUME},dst=/source,readonly',
-                   '--mount',f'type=volume,src={VOLUME},dst=/data',
-                   '--entrypoint','python',image,'-c',COPY_SETTINGS_CODE],capture=True)
-        if INSTALL_DIR.exists():
-            raise InstallError('New installation directory appeared during migration; no files moved.')
-        source.rename(INSTALL_DIR);moved=True
-        candidate=INSTALL_DIR/candidate.name
-        backup=INSTALL_DIR/'compose.before-name-migration.yaml'
-        backup.write_bytes(old_compose);backup.chmod(0o600)
-        compose_path=INSTALL_DIR/'compose.yaml'
-        os.replace(candidate,compose_path)
-        starting=True
-        run(base+['-f',str(compose_path),'up','-d','--no-build','--pull','never'])
-        wait_healthy()
-        pending=INSTALL_DIR/'installer-state.tmp'
-        pending.write_text(json.dumps(state,indent=2)+'\n');pending.chmod(0o600)
-        os.replace(pending,INSTALL_DIR/'installer-state.json')
-    except (InstallError, OSError):
-        if starting:
-            cleanup=run(base+['-f',str(INSTALL_DIR/'compose.yaml'),'down','--timeout','20'],check=False)
-            if cleanup.returncode:
-                raise InstallError('New deployment cleanup failed. Both settings volumes are retained; inspect Docker before restarting either bridge.')
-        if moved:
-            (INSTALL_DIR/'compose.yaml').write_bytes(old_compose)
-            (INSTALL_DIR/'installer-state.json').write_bytes(old_state)
-            INSTALL_DIR.rename(source)
-        if stopped and was_running:
-            restored=run(DOCKER+['start',LEGACY_NAME],check=False)
-            if restored.returncode:
-                raise InstallError('Original files and settings retained, but the old container could not restart. Inspect Docker before retrying.')
-        print('Migration stopped; original installation retained. Any new settings copy is also retained for review before retrying.',file=sys.stderr)
-        raise
-    finally:
-        (source/'compose.name-migration.yaml').unlink(missing_ok=True)
-        (INSTALL_DIR/'compose.name-migration.yaml').unlink(missing_ok=True)
-    cleanup=run(DOCKER+['compose','--project-name',LEGACY_NAME,'-f',str(backup),'down','--timeout','20'],check=False)
-    if cleanup.returncode:
-        print('New bridge is healthy; old stopped Docker resources could not all be removed.',file=sys.stderr)
-    print(f'Migration complete. Original settings retained as a backup in Docker volume {LEGACY_VOLUME}.',flush=True)
-
-
-def foreign_published_ports(bind, legacy=False):
+def foreign_published_ports(bind):
     result=run(DOCKER+['ps','--format','{{.Names}}'],capture=True)
     occupied=set()
     for name in result.stdout.splitlines():
-        if name==(LEGACY_NAME if legacy else CONTAINER):
+        if name==CONTAINER:
             continue
         data=run(DOCKER+['inspect','--format','{{json .NetworkSettings.Ports}}',name],capture=True)
         for entries in (json.loads(data.stdout) or {}).values():
@@ -418,12 +331,12 @@ def deploy(compose, state, rollback_image=None):
                 compose_path.write_bytes(previous);compose_path.chmod(0o600)
                 restored=run(base+['-f',str(compose_path),'up','-d','--no-build','--pull','never'],check=False)
                 message='Previous configuration restored; restart requested.' if restored.returncode==0 else 'Previous configuration restored, but its restart failed; inspect container logs.'
-                print(message+' Settings volume retained.',file=sys.stderr)
+                print(message+' Settings directory retained.',file=sys.stderr)
             else:
-                # Keep the settings volume even if setup was attempted during startup.
+                # Keep settings even if setup was attempted during startup.
                 run(base+['-f',str(compose_path),'down','--timeout','20'],check=False)
                 compose_path.unlink(missing_ok=True)
-                print('Failed first deployment removed; settings volume retained.',file=sys.stderr)
+                print('Failed first deployment removed; settings directory retained.',file=sys.stderr)
             raise
         state_path=INSTALL_DIR/'installer-state.json'
         pending=state_path.with_suffix('.tmp')
@@ -446,7 +359,6 @@ def main(argv=None):
         raise InstallError('This release supports amd64 and arm64 only.')
     release=verify_payload(BUNDLE)
     source=installation_source()
-    legacy=source != INSTALL_DIR
     old_path=source/'installer-state.json'
     old=json.loads(old_path.read_text()) if old_path.exists() else {}
     interfaces=json.loads(run(['ip','-j','-4','address','show','scope','global'],capture=True).stdout)
@@ -461,18 +373,14 @@ def main(argv=None):
         conflicts=[p for p in ('docker.io','docker-compose','docker-buildx','podman-docker','containerd','runc') if installed(p)]
         if conflicts:
             raise InstallError('Existing container packages need review: '+', '.join(conflicts)+'. No packages were removed.')
-    existing=inspect_container(legacy) if ready else None
-    if ready:
-        if legacy: check_name_migration(existing)
-        else: check_volume(existing,bool(old))
+    existing=inspect_container() if ready else None
+    check_storage(source,existing,old)
     if (source/'compose.yaml').exists() and not old:
         raise InstallError('Installation directory contains an unmanaged Compose file; no changes made.')
-    check_ports(bind,admin_port,existing,foreign_published_ports(bind,legacy) if ready else ())
+    check_ports(bind,admin_port,existing,foreign_published_ports(bind) if ready else ())
     if shutil.disk_usage('/var').free < 2*1024**3:
         raise InstallError('At least 2 GiB free under /var is required for Docker and the image.')
     print(f'Debian {codename}, {arch}. Bridge address: {bind}. Admin page: http://{bind}:{admin_port}',flush=True)
-    if legacy:
-        print(f'Existing installation will move to {INSTALL_DIR}. Settings will be copied and Docker resources renamed; camera identities are retained.',flush=True)
     if args.check:
         print('Preflight passed. No changes made. Docker will be installed if needed.');return
     if os.geteuid()!=0:
@@ -491,10 +399,9 @@ def main(argv=None):
         if engine_arch not in {'amd64':('amd64','x86_64'),'arm64':('arm64','aarch64')}[arch]:
             raise InstallError('The local Docker engine architecture does not match this host.')
         # Recheck now that Docker is running and immediately before deployment.
-        existing=inspect_container(legacy)
-        if legacy: check_name_migration(existing)
-        else: check_volume(existing,bool(old))
-        check_ports(bind,admin_port,existing,foreign_published_ports(bind,legacy))
+        existing=inspect_container()
+        check_storage(source,existing,old)
+        check_ports(bind,admin_port,existing,foreign_published_ports(bind))
         rollback_image=existing.get('Image') if existing else None
         installed_version=release['version']
         if image:
@@ -509,11 +416,14 @@ def main(argv=None):
             print('Loading the bundled bridge image.',flush=True)
             run(DOCKER+['load','-i',str(BUNDLE/f'image-{arch}.tar.gz')])
         run(['systemctl','enable','--now','docker'])
-        state={'version':installed_version,'image':image,'architecture':arch,'bind_address':bind,'admin_port':admin_port}
-        if legacy: migrate_names(source,compose,state,image,existing)
-        else: deploy(compose,state,rollback_image)
+        state={'version':installed_version,'image':image,'architecture':arch,'bind_address':bind,'admin_port':admin_port,'storage':'directory'}
+        check_storage(source,existing,old)
+        source.mkdir(mode=0o755,parents=True,exist_ok=True)
+        if not (source/'data').exists():create_data_directory(source/'data')
+        deploy(compose,state,rollback_image)
 
-    print(f'\nUnifi Camera Bridge is ready: http://{bind}:{admin_port}\nOpen this address in your browser. Sign in, or choose an admin password for a new installation.\nSettings are retained across restarts and installer reruns.')
+
+    print(f'\nUnifi Camera Bridge is ready: http://{bind}:{admin_port}\nOpen this address in your browser. Sign in, or choose an admin password for a new installation.\nSettings: {INSTALL_DIR}/data/config.json. Back up the data folder to preserve your configuration.')
 
 if __name__=='__main__':
     try:main()

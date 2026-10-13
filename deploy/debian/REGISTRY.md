@@ -4,7 +4,7 @@ This small installer pulls `IMAGE_REFERENCE` from GitHub Container Registry.
 Supports Debian 12/13 on x64 (amd64) and ARM64 hosts/VMs with systemd. Internet
 access is required. Public images need no GitHub account or Docker login.
 
-## Install or migrate an existing installer-managed deployment
+## Install
 
 Extract the downloaded release package and run:
 
@@ -18,21 +18,18 @@ Docker and Compose are installed when needed. The image for the host CPU is
 pulled automatically. The installer prints the web interface address; finish
 first-time setup there. `--check`, `--bind-address LAN_IP` and `--admin-port PORT`
 remain available. An update retains the existing bind address, ports, camera
-identities, admin login and persistent settings volume.
+identities, admin login and settings folder.
 
-Existing installer-managed deployments can run this installer directly. It moves
-`/opt/sonoff-protect-bridge` or `/opt/unifi-protect-bridge` to
-`/opt/unifi-camera-bridge` and switches the Docker project/container to
-`unifi-camera-bridge`. Settings are copied to `unifi-camera-bridge-data` while the
-old container is stopped. Login details, camera identities, address and ports
-are preserved. The original volume remains as a recovery backup; protect it as
-it contains camera credentials. A failed migration attempts to restart the
-original deployment and retains both settings copies for review.
+Settings are stored in `/opt/unifi-camera-bridge/data/config.json`, mounted into
+the container at `/data`. This installer does not migrate older installations
+or Docker volumes; use a fresh installation to adopt this layout.
 
-If multiple installation directories or a destination container/volume already
-exist, the installer stops without overwriting them. Unmanaged Docker/QNAP
-installations are not taken over automatically. When updating these, retain the
-existing settings volume and project until you have arranged a settings migration.
+## Back up settings
+
+Stop the bridge, back up `/opt/unifi-camera-bridge` including its `data` folder,
+then start it again. Protect the backup: it contains camera logins. When restoring,
+keep `data` owned by `65532:65532` with permissions `0700`, and `config.json` with
+permissions `0600`. Restore files before starting the container.
 
 ## Update
 
@@ -45,8 +42,7 @@ sudo docker compose -p unifi-camera-bridge up -d --no-build manager
 ```
 
 The pull happens while the current bridge runs. Recreating the container briefly
-interrupts video and clears browser sessions. Keep the settings volume; never
-add `--volumes` or `-v` to a remove/down command unless deleting settings is intended.
+interrupts video and clears browser sessions. Keep the `data` folder when replacing or removing containers.
 Plain Compose updates do not automatically roll back or back up settings. Keep a
 secure backup before upgrades, especially when release notes mention migrations.
 The camera application has no access to the Docker socket.
@@ -54,9 +50,9 @@ The camera application has no access to the Docker socket.
 ## Pin a release or roll back
 
 Change the image tag in `/opt/unifi-camera-bridge/compose.yaml` from `stable` to a
-numbered release (for example `1.6.6`), then run the same pull/up commands. Older
+numbered release (for example `1.6.7`), then run the same pull/up commands. Older
 versions may require a matching settings backup if a release changes its format.
-Do not change the project name or named data volume.
+Keep the same project name and data-folder mount.
 
 Rerunning an installer resets the image reference to the one in that installer.
 If an installer-driven deployment fails its health check, the installer attempts
@@ -69,8 +65,8 @@ untouched. Previous images should be kept until an update has been checked.
 Admin defaults to port 18080; ONVIF uses 8100–8115 and RTSP uses 8600–8615. Debian
 binds these to the selected private LAN IPv4. Keep the address stable. Complete
 first-admin setup promptly on a trusted network. The installer does not alter
-router or firewall policy. Credentials stay in the protected settings volume
-`unifi-camera-bridge-data`; release images contain no camera settings.
+router or firewall policy. Credentials stay in `/opt/unifi-camera-bridge/data/config.json`; release images
+contain no camera settings.
 
 Use the application's Logs screen for camera issues, or `sudo docker logs --tail
 100 unifi-camera-bridge` for startup troubleshooting. The installer is for

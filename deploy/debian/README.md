@@ -4,15 +4,15 @@ For Debian 12 or 13 on an Intel/AMD x64 or ARM64 machine/VM with systemd.
 Both bridge images are included. The installer selects the right one, installs
 Docker Engine and Compose if needed, imports the image and starts the bridge.
 No registry account, manual image import or configuration-file editing is needed.
-This installs bridge version 1.6.6. It does not install Debian itself.
+This installs bridge version 1.6.7. It does not install Debian itself.
 
 ## Install
 
 Copy the installer archive to the Debian machine. In that directory:
 
 ```sh
-tar -xzf unifi-camera-bridge-1.6.6-debian-installer.tar.gz
-cd unifi-camera-bridge-1.6.6-debian
+tar -xzf unifi-camera-bridge-1.6.7-debian-installer.tar.gz
+cd unifi-camera-bridge-1.6.7-debian
 sudo ./install.sh
 ```
 
@@ -36,8 +36,8 @@ No one-time token is required. Use a stable/DHCP-reserved host address.
   credentials.
 - A container named `unifi-camera-bridge`, with a read-only filesystem and a
   non-root application user. It starts automatically when Docker starts.
-- Persistent settings in the named Docker volume `unifi-camera-bridge-data`.
-  That volume contains camera credentials and should be backed up securely.
+- Persistent settings in `/opt/unifi-camera-bridge/data/config.json`.
+  Back up the `data` folder securely; it contains camera credentials.
 - TCP port 18080 for administration, 8100–8115 for ONVIF/events/snapshots, and
   8600–8615 for RTSP, bound to the detected private LAN IPv4 address. Port numbers
   for camera views remain identical inside and outside Docker.
@@ -57,17 +57,12 @@ Extract a newer installer bundle and run its `install.sh`. The installer keeps
 its existing LAN binding, admin port and settings, then replaces the
 application image. Upgrades briefly interrupt video and clear browser sessions.
 If startup fails, it attempts to restore the previous deployment configuration.
-A failed first installation retains its volume so settings are not discarded.
+A failed first installation retains its data folder so settings are not discarded.
 
-Older installer-managed deployments are migrated from either previous directory
-name to `/opt/unifi-camera-bridge`. Docker resources use `unifi-camera-bridge`,
-with settings copied to `unifi-camera-bridge-data`. The original settings volume
-is kept as a recovery backup. Run the installer for this migration; pulling an
-image alone does not rename host files or Docker resources.
-
-A manually installed bridge, pre-existing unmanaged settings volume or unrelated
-container with the same name is not taken over automatically. Arrange a migration
-first. Existing conflicting Docker packages are reported without removing them.
+This installer does not migrate older installations or Docker volumes. Start
+with a fresh installation to use folder storage. Existing settings are not deleted.
+An unrelated container with the same name is not taken over automatically.
+Existing conflicting Docker packages are reported without removing them.
 
 This installer sets up a separate host. It does not migrate or stop your current
 Mac/QNAP bridge or change existing Protect adoptions. You can add cameras afresh,
@@ -124,8 +119,10 @@ sudo docker compose -p unifi-camera-bridge -f /opt/unifi-camera-bridge/compose.y
 sudo docker compose -p unifi-camera-bridge -f /opt/unifi-camera-bridge/compose.yaml up -d --no-build --pull never
 ```
 
-Retain the settings volume when updating/removing containers. Do not run
-`docker compose down -v` unless you intend to delete all bridge settings.
+Back up `/opt/unifi-camera-bridge/data` while the bridge is stopped for a consistent
+copy. Keep the folder owned by `65532:65532` with permissions `0700`; `config.json`
+uses `0600`. Restore it with the same ownership and permissions before starting
+the bridge. Removing a container does not remove this folder.
 
 ## Scope and validation
 

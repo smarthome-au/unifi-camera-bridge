@@ -34,7 +34,7 @@ for arch in ('amd64','arm64'):
 checks={}
 for name in members:
     with (folder/name).open('rb') as f:checks[name]=hashlib.file_digest(f,'sha256').hexdigest()
-(folder/'release.json').write_text(json.dumps({'version':version,'installer_version':1,'sha256':checks},indent=2)+'\n')
+(folder/'release.json').write_text(json.dumps({'version':version,'installer_version':5,'sha256':checks},indent=2)+'\n')
 members.append('release.json')
 with (folder/'release.json').open('rb') as f:checks['release.json']=hashlib.file_digest(f,'sha256').hexdigest()
 (folder/'SHA256SUMS.txt').write_text(''.join(f'{digest}  {name}\n' for name,digest in checks.items()));members.append('SHA256SUMS.txt')
